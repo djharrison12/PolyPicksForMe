@@ -36,17 +36,17 @@ MIN_MONTH_PNL = 50_000          # profit floor over the last 30 days (lowered)
 TRADES_PER_DAY_MIN = 1.0        # min DISTINCT MARKETS/day (a real, active trader)
 TRADES_PER_DAY_MAX = 20.0       # max DISTINCT MARKETS/day (exclude churn/HFT bots)
 MIN_TRADES_SAMPLE = 10          # need >= this many fills in the window to judge
-COHORT_MAX = 40                 # keep at most this many after ranking
+COHORT_MAX = 75                 # keep at most this many after ranking (was 40)
 RANK_BY = "pnl"                 # "pnl" (default) or "efficiency" (profit/bet)
 
 LB_CATEGORY = "SPORTS"          # cohort = top SPORTS earners (your bettable lane)
-LB_MAX_SCAN = 200               # how deep into the month board to scan (paged 50)
+LB_MAX_SCAN = 300               # scan deeper to fill the bigger cohort
 ACTIVITY_WINDOW_DAYS = 7
 
 # ---------------------------------------------------------------------------
 # CONSENSUS
 # ---------------------------------------------------------------------------
-THRESHOLD = 4                   # how many cohort members must share an open position
+THRESHOLD = 5                   # agreement bar, raised with the bigger cohort
 MIN_POSITION_USD = 25.0
 # Drop near-decided markets: a consensus at ask ~1.00 or ~0.01 is people holding
 # winning tickets, not a bet you can still make money on. Keep the live middle.
@@ -172,7 +172,7 @@ def build_cohort(verbose=False):
 
 
 def find_consensus(cohort):
-    by_asset = defaultdict(lambda: {"holders": set(), "meta": None})
+    by_asset = defaultdict(lambda: {"holders": set(), "meta": None, "entries": []})
     for wallet, info in cohort.items():
         try:
             positions = get_positions(wallet)
@@ -186,6 +186,12 @@ def find_consensus(cohort):
                 continue
             e = by_asset[asset]
             e["holders"].add(info["name"])
+            avg = p.get("avgPrice")
+            if avg is not None:
+                try:
+                    e["entries"].append(float(avg))
+                except (TypeError, ValueError):
+                    pass
             if e["meta"] is None:
                 e["meta"] = {
                     "title": p.get("title") or p.get("slug") or "(unknown)",
@@ -207,16 +213,20 @@ def find_consensus(cohort):
         st = status.get(e["meta"]["conditionId"], {})
         if not st.get("open"):
             continue
-        ask = st.get("ask", e["meta"].get("curPrice"))
-        # Skip near-resolved markets where there's nothing left to win.
+        # Price of the side the COHORT HOLDS (from their position), not the
+        # market's generic bestAsk — that bestAsk is the opposite outcome and
+        # caused "No (ask 0.92)" when No actually cost ~0.08.
+        price = e["meta"].get("curPrice")
+        # Skip near-decided markets where this side has little left to win/lose.
         try:
-            if ask is not None and not (MIN_ASK <= float(ask) <= MAX_ASK):
+            if price is not None and not (MIN_ASK <= float(price) <= MAX_ASK):
                 continue
         except (TypeError, ValueError):
             pass
         out.append({**e["meta"], "asset": asset,
                     "count": len(e["holders"]), "holders": sorted(e["holders"]),
-                    "ask": ask})
+                    "ask": price,
+                    "entry": (sum(e["entries"]) / len(e["entries"])) if e["entries"] else None})
     out.sort(key=lambda x: x["count"], reverse=True)
     return out
 
@@ -249,10 +259,21 @@ def telegram_push(text):
 
 def announce(item):
     ask = item.get("ask")
-    ask_str = f"  (ask ~{float(ask):.2f})" if ask not in (None, "") else ""
+    entry = item.get("entry")
+    price_str = f"  (price ~{float(ask):.2f})" if ask not in (None, "") else ""
+    move_str = ""
+    if entry is not None and ask not in (None, ""):
+        move = float(ask) - float(entry)
+        arrow = "+" if move >= 0 else ""
+        move_str = f"\n   Their entry ~{float(entry):.2f} -> now ~{float(ask):.2f} ({arrow}{move:.2f})"
+        # If it's moved meaningfully toward their side, you're entering late.
+        if move >= 0.03:
+            move_str += "  [line already moved - you're late]"
+        elif move <= -0.03:
+            move_str += "  [now cheaper than they paid]"
     url = f"https://polymarket.com/event/{item['slug']}" if item.get("slug") else ""
     msg = (f"\U0001F7E2 {item['count']} cohort traders are ON: {item['title']}\n"
-           f"   Side: {item['outcome']}{ask_str}\n"
+           f"   Side: {item['outcome']}{price_str}{move_str}\n"
            f"   Who: {', '.join(item['holders'])}")
     if url:
         msg += f"\n   {url}"
