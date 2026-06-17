@@ -3,7 +3,7 @@
 poly_consensus2.py  (v3) — quality-cohort consensus monitor.
 
 Changes vs v2 (why your cohort came back 0):
-  - Activity is now measured as DISTINCT MARKETS PER DAY ("bets/day"), not raw
+  - Activity is now measured as DISTINCT MARKETS PER DAY ("bets/day"), not raw 
     fills. One bet can fill in many pieces, so the old fill-count band selected
     near-inactive accounts and excluded everyone real. This is the honest fix.
   - Selection is RANK-BASED: scan the top earners, apply sane floors/caps, then
