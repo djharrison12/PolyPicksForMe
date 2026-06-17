@@ -1,75 +1,59 @@
 #!/usr/bin/env python3
 """
-poly_consensus2.py — Consensus monitor for a *quality cohort* of Polymarket traders.
+poly_consensus2.py  (v3) — quality-cohort consensus monitor.
 
-Difference from v1:
-  - The pool is no longer "today's hot leaderboard." It's a cohort built from
-    two filters you control:
-        (a) >= MIN_MONTH_PNL profit over the last 30 days, and
-        (b) an average of TRADES_PER_DAY_MIN..TRADES_PER_DAY_MAX trades/day.
-  - It only surfaces consensus in markets that are STILL OPEN for betting
-    (acceptingOrders == true, not closed), so every alert is something you can
-    actually enter. It reports the current ask so you see the price.
+Changes vs v2 (why your cohort came back 0):
+  - Activity is now measured as DISTINCT MARKETS PER DAY ("bets/day"), not raw
+    fills. One bet can fill in many pieces, so the old fill-count band selected
+    near-inactive accounts and excluded everyone real. This is the honest fix.
+  - Selection is RANK-BASED: scan the top earners, apply sane floors/caps, then
+    keep the best COHORT_MAX of them. No single razor-thin band to fall through.
+  - It PRINTS THE FULL DISTRIBUTION every run (pnl, bets/day, efficiency) so you
+    can set cutoffs from real numbers instead of guessing.
+  - "Most profit, fewest bets" is supported via RANK_BY="efficiency", guarded by
+    a minimum sample so you don't select lucky small-sample flukes.
 
-Pipeline:
-  1. Page the MONTH / PNL leaderboard; keep traders with pnl >= MIN_MONTH_PNL.
-  2. For each, count trades over the last ACTIVITY_WINDOW_DAYS days; keep those
-     whose trades/day falls in [TRADES_PER_DAY_MIN, TRADES_PER_DAY_MAX].
-  3. Pull each cohort member's current positions; group by `asset` (one side of
-     one market). Flag any asset held by >= THRESHOLD members (dust excluded).
-  4. Check those markets via Gamma; drop anything not still accepting orders.
-  5. Alert only on NEW consensus (state file), with the current ask price.
-
-Everything is public + read-only. No wallet/private key needed to READ.
-
-    pip install requests
-    python3 poly_consensus2.py          # one pass
-    python3 poly_consensus2.py --loop    # poll forever
-    python3 poly_consensus2.py --show-cohort   # just print who qualifies & exit
-
-Optional Telegram push: set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID.
+Public interface kept stable so build_feed.py keeps working:
+  build_cohort(), find_consensus(), load_state(), save_state(), announce(),
+  and the module constants MIN_MONTH_PNL, TRADES_PER_DAY_MIN/MAX, THRESHOLD.
 """
 
 import argparse
 import json
-import os
 import time
 from collections import defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 
-# ---------------------------------------------------------------------------
-# CONFIG
-# ---------------------------------------------------------------------------
-
 DATA_API = "https://data-api.polymarket.com"
 GAMMA_API = "https://gamma-api.polymarket.com"
 
-# --- Cohort filters ---
-MIN_MONTH_PNL = 1_000_000      # >= $1M profit in the last 30 days
-TRADES_PER_DAY_MIN = 5
-TRADES_PER_DAY_MAX = 10
-ACTIVITY_WINDOW_DAYS = 7        # window over which trades/day is averaged
-LB_CATEGORY = "OVERALL"         # quality filter spans all categories
-LB_MAX_SCAN = 300               # how deep into the month board to scan (paged by 50)
+# ---------------------------------------------------------------------------
+# COHORT FILTERS  (starting guesses - calibrate from the printed distribution)
+# ---------------------------------------------------------------------------
+MIN_MONTH_PNL = 50_000          # profit floor over the last 30 days (lowered)
+TRADES_PER_DAY_MIN = 1.0        # min DISTINCT MARKETS/day (a real, active trader)
+TRADES_PER_DAY_MAX = 20.0       # max DISTINCT MARKETS/day (exclude churn/HFT bots)
+MIN_TRADES_SAMPLE = 10          # need >= this many fills in the window to judge
+COHORT_MAX = 40                 # keep at most this many after ranking
+RANK_BY = "pnl"                 # "pnl" (default) or "efficiency" (profit/bet)
 
-# --- Consensus ---
-THRESHOLD = 5                   # how many cohort members must share a position
-MIN_POSITION_USD = 25.0         # ignore dust positions below this current value
+LB_CATEGORY = "OVERALL"
+LB_MAX_SCAN = 200               # how deep into the month board to scan (paged 50)
+ACTIVITY_WINDOW_DAYS = 7
 
-# --- Loop / politeness ---
+# ---------------------------------------------------------------------------
+# CONSENSUS
+# ---------------------------------------------------------------------------
+THRESHOLD = 4                   # how many cohort members must share an open position
+MIN_POSITION_USD = 25.0
+
 POLL_SECONDS = 180
-PER_CALL_DELAY = 0.25
-
+PER_CALL_DELAY = 0.2
 STATE_FILE = Path(__file__).with_name("seen_consensus2.json")
-HEADERS = {"User-Agent": "poly-consensus2/1.0"}
+HEADERS = {"User-Agent": "poly-consensus3/1.0"}
 
-
-# ---------------------------------------------------------------------------
-# API helpers
-# ---------------------------------------------------------------------------
 
 def _get(url, params):
     r = requests.get(url, params=params, headers=HEADERS, timeout=25)
@@ -89,60 +73,51 @@ def get_positions(wallet):
                 {"user": wallet, "sizeThreshold": 0.1, "limit": 500})
 
 
-def count_trades(wallet, days):
-    """Count TRADE activity events for a wallet over the last `days` days."""
+def activity_stats(wallet, days):
+    """Return (fills, distinct_markets) over the last `days` days."""
     now = int(time.time())
     start = now - days * 86400
-    total, offset = 0, 0
+    fills, markets, offset = 0, set(), 0
     while True:
         rows = _get(f"{DATA_API}/activity", {
             "user": wallet, "type": "TRADE",
-            "start": start, "end": now,
-            "limit": 500, "offset": offset,
+            "start": start, "end": now, "limit": 500, "offset": offset,
         })
-        total += len(rows)
+        fills += len(rows)
+        for r in rows:
+            cid = r.get("conditionId") or r.get("asset")
+            if cid:
+                markets.add(cid)
         if len(rows) < 500:
             break
         offset += 500
-        if offset >= 5000:   # hard safety cap
+        if offset >= 5000:
             break
         time.sleep(PER_CALL_DELAY)
-    return total
+    return fills, len(markets)
 
 
 def markets_status(condition_ids):
-    """
-    Batch-look up market status. Returns {conditionId: {open, ask, question}}.
-    `open` = acceptingOrders and not closed.
-    """
     status = {}
     ids = list(condition_ids)
     for i in range(0, len(ids), 20):
-        chunk = ids[i:i + 20]
         try:
-            rows = _get(f"{GAMMA_API}/markets", {"condition_ids": chunk})
+            rows = _get(f"{GAMMA_API}/markets", {"condition_ids": ids[i:i + 20]})
         except requests.RequestException:
             continue
         for m in rows:
             cid = m.get("conditionId")
-            if not cid:
-                continue
-            status[cid] = {
-                "open": bool(m.get("acceptingOrders")) and not bool(m.get("closed")),
-                "ask": m.get("bestAsk"),
-                "question": m.get("question") or m.get("slug") or "",
-            }
+            if cid:
+                status[cid] = {
+                    "open": bool(m.get("acceptingOrders")) and not bool(m.get("closed")),
+                    "ask": m.get("bestAsk"),
+                }
         time.sleep(PER_CALL_DELAY)
     return status
 
 
-# ---------------------------------------------------------------------------
-# Cohort construction
-# ---------------------------------------------------------------------------
-
 def build_cohort(verbose=False):
-    """Return {wallet: {'name':..., 'pnl':..., 'tpd':...}} passing both filters."""
-    # Step 1: pnl filter (board is sorted by PNL desc, so stop once below cutoff).
+    """Scan top earners, print the distribution, return the ranked cohort."""
     candidates = []
     for offset in range(0, LB_MAX_SCAN, 50):
         rows = leaderboard_page(offset)
@@ -161,37 +136,39 @@ def build_cohort(verbose=False):
             break
         time.sleep(PER_CALL_DELAY)
 
-    if verbose:
-        print(f"{len(candidates)} traders above ${MIN_MONTH_PNL:,.0f} month PnL. "
-              f"Checking trade frequency...")
-
-    # Step 2: trades/day filter.
-    cohort = {}
+    rows_out = []
+    print(f"\n--- candidate distribution (pnl >= ${MIN_MONTH_PNL:,.0f}, "
+          f"{len(candidates)} found) ---")
+    print(f"{'trader':<22}{'pnl':>13}{'bets/day':>10}{'fills':>8}{'eff $/bet':>12}  keep")
     for wallet, name, pnl in candidates:
         try:
-            n = count_trades(wallet, ACTIVITY_WINDOW_DAYS)
-        except requests.RequestException as e:
-            if verbose:
-                print(f"  ! activity failed for {name}: {e}")
+            fills, mkts = activity_stats(wallet, ACTIVITY_WINDOW_DAYS)
+        except requests.RequestException:
             continue
-        tpd = n / ACTIVITY_WINDOW_DAYS
-        keep = TRADES_PER_DAY_MIN <= tpd <= TRADES_PER_DAY_MAX
-        if verbose:
-            mark = "✓" if keep else "·"
-            print(f"  {mark} {name:<22} pnl ${pnl:>12,.0f}   {tpd:>4.1f} trades/day")
-        if keep:
-            cohort[wallet] = {"name": name, "pnl": pnl, "tpd": tpd}
+        bpd = mkts / ACTIVITY_WINDOW_DAYS
+        eff = pnl / mkts if mkts else 0
+        keep = (fills >= MIN_TRADES_SAMPLE
+                and TRADES_PER_DAY_MIN <= bpd <= TRADES_PER_DAY_MAX)
+        rows_out.append({"wallet": wallet, "name": name, "pnl": pnl,
+                         "bpd": bpd, "fills": fills, "eff": eff, "keep": keep})
+        print(f"{name[:21]:<22}{pnl:>13,.0f}{bpd:>10.1f}{fills:>8}"
+              f"{eff:>12,.0f}  {'YES' if keep else '-'}")
         time.sleep(PER_CALL_DELAY)
+
+    keepers = [r for r in rows_out if r["keep"]]
+    key = (lambda r: r["eff"]) if RANK_BY == "efficiency" else (lambda r: r["pnl"])
+    keepers.sort(key=key, reverse=True)
+    keepers = keepers[:COHORT_MAX]
+
+    cohort = {r["wallet"]: {"name": r["name"], "pnl": r["pnl"],
+                            "bpd": r["bpd"], "eff": r["eff"]} for r in keepers}
+    print(f"--- cohort: {len(cohort)} traders kept "
+          f"(ranked by {RANK_BY}, cap {COHORT_MAX}) ---\n")
     return cohort
 
 
-# ---------------------------------------------------------------------------
-# Consensus (active markets only)
-# ---------------------------------------------------------------------------
-
 def find_consensus(cohort):
     by_asset = defaultdict(lambda: {"holders": set(), "meta": None})
-
     for wallet, info in cohort.items():
         try:
             positions = get_positions(wallet)
@@ -215,35 +192,23 @@ def find_consensus(cohort):
                 }
         time.sleep(PER_CALL_DELAY)
 
-    # Candidates that clear the agreement threshold.
     raw = {a: e for a, e in by_asset.items() if len(e["holders"]) >= THRESHOLD}
     if not raw:
         return []
-
-    # Keep only markets still open for betting.
     cond_ids = {e["meta"]["conditionId"] for e in raw.values() if e["meta"]["conditionId"]}
     status = markets_status(cond_ids)
 
     out = []
     for asset, e in raw.items():
-        cid = e["meta"]["conditionId"]
-        st = status.get(cid, {})
+        st = status.get(e["meta"]["conditionId"], {})
         if not st.get("open"):
-            continue   # resolved / closed / not accepting orders -> skip
-        out.append({
-            **e["meta"],
-            "asset": asset,
-            "count": len(e["holders"]),
-            "holders": sorted(e["holders"]),
-            "ask": st.get("ask", e["meta"].get("curPrice")),
-        })
+            continue
+        out.append({**e["meta"], "asset": asset,
+                    "count": len(e["holders"]), "holders": sorted(e["holders"]),
+                    "ask": st.get("ask", e["meta"].get("curPrice"))})
     out.sort(key=lambda x: x["count"], reverse=True)
     return out
 
-
-# ---------------------------------------------------------------------------
-# State + notify
-# ---------------------------------------------------------------------------
 
 def load_state():
     if STATE_FILE.exists():
@@ -259,6 +224,7 @@ def save_state(seen):
 
 
 def telegram_push(text):
+    import os
     tok, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if not (tok and chat):
         return
@@ -274,7 +240,7 @@ def announce(item):
     ask = item.get("ask")
     ask_str = f"  (ask ~{float(ask):.2f})" if ask not in (None, "") else ""
     url = f"https://polymarket.com/event/{item['slug']}" if item.get("slug") else ""
-    msg = (f"🟢 {item['count']} cohort traders are ON: {item['title']}\n"
+    msg = (f"\U0001F7E2 {item['count']} cohort traders are ON: {item['title']}\n"
            f"   Side: {item['outcome']}{ask_str}\n"
            f"   Who: {', '.join(item['holders'])}")
     if url:
@@ -283,19 +249,12 @@ def announce(item):
     telegram_push(msg)
 
 
-# ---------------------------------------------------------------------------
-# Run
-# ---------------------------------------------------------------------------
-
-def run_once(seen, verbose=False):
-    cohort = build_cohort(verbose=verbose)
-    print(f"Cohort size: {len(cohort)} traders "
-          f"(>= ${MIN_MONTH_PNL:,.0f}/mo, {TRADES_PER_DAY_MIN}-{TRADES_PER_DAY_MAX} trades/day). "
-          f"Consensus threshold: {THRESHOLD}.")
+def run_once(seen):
+    cohort = build_cohort(verbose=True)
+    print(f"Cohort {len(cohort)} | consensus threshold {THRESHOLD}")
     if not cohort:
-        print("No traders matched the cohort filters this cycle.")
+        print("Cohort empty - loosen the filters (see the table above).")
         return seen
-
     hits = find_consensus(cohort)
     new = 0
     for item in hits:
@@ -314,18 +273,13 @@ def run_once(seen, verbose=False):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--loop", action="store_true")
-    ap.add_argument("--show-cohort", action="store_true",
-                    help="print qualifying traders and exit")
+    ap.add_argument("--show-cohort", action="store_true")
     args = ap.parse_args()
-
     if args.show_cohort:
-        cohort = build_cohort(verbose=True)
-        print(f"\n{len(cohort)} traders in cohort.")
+        build_cohort(verbose=True)
         return
-
     seen = load_state()
     if args.loop:
-        print(f"Looping every {POLL_SECONDS}s. Ctrl-C to stop.")
         while True:
             try:
                 seen = run_once(seen)
@@ -333,7 +287,7 @@ def main():
                 print(f"cycle error: {e}")
             time.sleep(POLL_SECONDS)
     else:
-        run_once(seen, verbose=True)
+        run_once(seen)
 
 
 if __name__ == "__main__":
