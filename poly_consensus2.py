@@ -3,7 +3,7 @@
 poly_consensus2.py  (v3) — quality-cohort consensus monitor.
 
 Changes vs v2 (why your cohort came back 0):
-  - Activity is now measured as DISTINCT MARKETS PER DAY ("bets/day"), not raw 
+  - Activity is now measured as DISTINCT MARKETS PER DAY ("bets/day"), not raw
     fills. One bet can fill in many pieces, so the old fill-count band selected
     near-inactive accounts and excluded everyone real. This is the honest fix.
   - Selection is RANK-BASED: scan the top earners, apply sane floors/caps, then
@@ -39,7 +39,7 @@ MIN_TRADES_SAMPLE = 10          # need >= this many fills in the window to judge
 COHORT_MAX = 40                 # keep at most this many after ranking
 RANK_BY = "pnl"                 # "pnl" (default) or "efficiency" (profit/bet)
 
-LB_CATEGORY = "OVERALL"
+LB_CATEGORY = "SPORTS"          # cohort = top SPORTS earners (your bettable lane)
 LB_MAX_SCAN = 200               # how deep into the month board to scan (paged 50)
 ACTIVITY_WINDOW_DAYS = 7
 
@@ -48,6 +48,10 @@ ACTIVITY_WINDOW_DAYS = 7
 # ---------------------------------------------------------------------------
 THRESHOLD = 4                   # how many cohort members must share an open position
 MIN_POSITION_USD = 25.0
+# Drop near-decided markets: a consensus at ask ~1.00 or ~0.01 is people holding
+# winning tickets, not a bet you can still make money on. Keep the live middle.
+MIN_ASK = 0.05
+MAX_ASK = 0.95
 
 POLL_SECONDS = 180
 PER_CALL_DELAY = 0.2
@@ -203,9 +207,16 @@ def find_consensus(cohort):
         st = status.get(e["meta"]["conditionId"], {})
         if not st.get("open"):
             continue
+        ask = st.get("ask", e["meta"].get("curPrice"))
+        # Skip near-resolved markets where there's nothing left to win.
+        try:
+            if ask is not None and not (MIN_ASK <= float(ask) <= MAX_ASK):
+                continue
+        except (TypeError, ValueError):
+            pass
         out.append({**e["meta"], "asset": asset,
                     "count": len(e["holders"]), "holders": sorted(e["holders"]),
-                    "ask": st.get("ask", e["meta"].get("curPrice"))})
+                    "ask": ask})
     out.sort(key=lambda x: x["count"], reverse=True)
     return out
 
