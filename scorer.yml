@@ -1,0 +1,33 @@
+name: scorer
+
+# TIER 1: weekly trader scoring. Heavy + slow, but nothing waits on it.
+# Run it manually first (it texts you a summary) to validate on real data.
+on:
+  schedule:
+    - cron: "0 9 * * 1"     # Mondays 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write            # so it can commit traders.json for the live loop
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: Score traders
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python3 score_traders.py --out traders.json
+      - name: Commit traders.json
+        run: |
+          git config user.name "scorer-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -f traders.json
+          git commit -m "weekly scores" || echo "no change"
+          git push || echo "push skipped"
