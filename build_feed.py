@@ -1,109 +1,81 @@
 #!/usr/bin/env python3
 """
-build_feed.py — run the cohort/consensus pipeline once.
+build_feed.py — TIER 2 live loop.
 
-Output goes to TELEGRAM (no repo files, no logs needed):
-  - Real consensus hits are pushed as they appear (deduped via state file).
-  - On a MANUAL run (you clicking "Run workflow"), it also texts you a one-message
-    DIAGNOSTIC: leaderboard count, top earners, cohort size, picks, errors — so you
-    can calibrate filters from your phone.
+Reads traders.json (from score_traders.py), polls the top-N by weight, finds
+WEIGHTED, GRADED consensus in still-open markets, texts new picks, and logs
+every alert so grades can be checked against outcomes later.
 
-It still writes results.json if --out is given (harmless, optional).
+Output is Telegram (no files needed to read). It also:
+  - logs each fired alert to alerts_log.jsonl (the calibration dataset)
+  - resolves past alerts whose markets have settled
+  - on a MANUAL run, texts a one-line diagnostic
 
-    python3 build_feed.py                 # alerts only
-    python3 build_feed.py --diag          # force the diagnostic text
-    python3 build_feed.py --out r.json    # also write the dashboard feed
+Falls back to the inline build_cohort() if traders.json isn't there yet, so it
+still works before the first scorer run.
 """
 
 import argparse
-import json
 import os
 import traceback
-from datetime import datetime, timezone
 
 import poly_consensus2 as pc
 
 
-def build():
-    debug = {"leaderboard_count": None, "top_earners": [], "cohort_count": 0,
-             "fallback_used": False, "error": None}
-    picks = []
-    cohort = {}
-    try:
-        lb = pc.leaderboard_page(0)
-        debug["leaderboard_count"] = len(lb)
-        debug["top_earners"] = [
-            f"{r.get('userName','?')} ${float(r.get('pnl') or 0):,.0f}" for r in lb[:5]
-        ]
-        cohort = pc.build_cohort(verbose=True)
-        if not cohort and lb:
-            debug["fallback_used"] = True
-            for r in lb[:pc.COHORT_MAX]:
-                w = r.get("proxyWallet")
-                if w and float(r.get("pnl") or 0) >= pc.MIN_MONTH_PNL:
-                    cohort[w.lower()] = {"name": r.get("userName") or w[:8],
-                                         "pnl": float(r.get("pnl") or 0)}
-        debug["cohort_count"] = len(cohort)
-        if cohort:
-            picks = pc.find_consensus(cohort)
-    except Exception as e:
-        debug["error"] = f"{type(e).__name__}: {e}"
-        traceback.print_exc()
-    return cohort, picks, debug
-
-
-def diag_text(debug):
-    lines = ["\U0001F527 DIAGNOSTIC",
-             f"leaderboard rows: {debug['leaderboard_count']}"]
-    if debug["top_earners"]:
-        lines.append("top earners: " + "; ".join(debug["top_earners"]))
-    lines += [f"cohort kept: {debug['cohort_count']}",
-              f"fallback used: {debug['fallback_used']}",
-              f"error: {debug['error']}"]
-    return "\n".join(lines)
+def get_cohort():
+    """Prefer the scored top-N; fall back to inline cohort build."""
+    scored = pc.load_scored_cohort()
+    if scored:
+        return scored, "scored"
+    return pc.build_cohort(verbose=True), "fallback"
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out")
     ap.add_argument("--diag", action="store_true")
     args = ap.parse_args()
 
-    cohort, picks, debug = build()
+    debug = {"cohort_count": 0, "source": None, "picks": 0, "error": None}
+    picks = []
+    try:
+        cohort, source = get_cohort()
+        debug["source"] = source
+        debug["cohort_count"] = len(cohort)
+        if cohort:
+            picks = pc.find_consensus(cohort)
+            debug["picks"] = len(picks)
+    except Exception as e:
+        debug["error"] = f"{type(e).__name__}: {e}"
+        traceback.print_exc()
 
-    summary = (f"leaderboard={debug['leaderboard_count']} cohort={debug['cohort_count']} "
-               f"picks={len(picks)} fallback={debug['fallback_used']} error={debug['error']}")
-    print("==>", summary)
+    print(f"==> source={debug['source']} cohort={debug['cohort_count']} "
+          f"picks={debug['picks']} error={debug['error']}")
 
-    # Send the diagnostic on manual runs or when --diag is passed.
-    manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
-    if args.diag or manual:
-        pc.telegram_push(diag_text(debug))
-
-    # Push real consensus hits (deduped).
+    # Push + log new graded picks (deduped via state).
     if picks:
         seen = pc.load_state()
         for p in picks:
-            sig = f"{p['asset']}:{p['count']}"
+            sig = f"{p['asset']}:{p['grade']}"   # re-alert if grade changes
             if sig in seen:
                 continue
             pc.announce(p)
+            pc.log_alert(p)
             seen.add(sig)
         pc.save_state(seen)
 
-    # Optional dashboard feed.
-    if args.out:
-        payload = {"updated": datetime.now(timezone.utc).isoformat(),
-                   "cohort": {"size": len(cohort), "minPnl": pc.MIN_MONTH_PNL,
-                              "tpdMin": pc.TRADES_PER_DAY_MIN,
-                              "tpdMax": pc.TRADES_PER_DAY_MAX, "threshold": pc.THRESHOLD},
-                   "picks": [{"title": p["title"], "outcome": p["outcome"],
-                              "ask": p.get("ask"), "count": p["count"],
-                              "threshold": pc.THRESHOLD, "holders": p["holders"],
-                              "slug": p.get("slug", ""), "asset": p["asset"]} for p in picks],
-                   "debug": debug}
-        with open(args.out, "w") as f:
-            json.dump(payload, f, indent=2)
+    # Update outcomes for past alerts whose markets have settled.
+    try:
+        pc.resolve_pending()
+    except Exception as e:
+        print("resolve error:", e)
+
+    # Diagnostic on manual runs.
+    manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+    if args.diag or manual:
+        top = "; ".join(f"{p['grade']} {p['title'][:30]}" for p in picks[:5]) or "none"
+        pc.telegram_push(f"\U0001F527 DIAGNOSTIC\nsource: {debug['source']}\n"
+                         f"cohort: {debug['cohort_count']}\npicks: {debug['picks']}\n"
+                         f"top: {top}\nerror: {debug['error']}")
 
 
 if __name__ == "__main__":
