@@ -1,92 +1,87 @@
 #!/usr/bin/env python3
 """
-build_feed.py — run the cohort/consensus pipeline once, write results.json for
-the dashboard, push new hits to Telegram. Now SELF-REPORTING: the final printed
-line and a "debug" block in results.json tell you exactly what happened, so you
-never have to dig through the Actions log.
+build_feed.py — run the cohort/consensus pipeline once.
 
-    python3 build_feed.py --out public/results.json
+Output goes to TELEGRAM (no repo files, no logs needed):
+  - Real consensus hits are pushed as they appear (deduped via state file).
+  - On a MANUAL run (you clicking "Run workflow"), it also texts you a one-message
+    DIAGNOSTIC: leaderboard count, top earners, cohort size, picks, errors — so you
+    can calibrate filters from your phone.
+
+It still writes results.json if --out is given (harmless, optional).
+
+    python3 build_feed.py                 # alerts only
+    python3 build_feed.py --diag          # force the diagnostic text
+    python3 build_feed.py --out r.json    # also write the dashboard feed
 """
 
 import argparse
 import json
+import os
 import traceback
 from datetime import datetime, timezone
 
 import poly_consensus2 as pc
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="results.json")
-    ap.add_argument("--no-telegram", action="store_true")
-    args = ap.parse_args()
-
-    debug = {
-        "leaderboard_count": None,   # how many traders the API returned to us
-        "leaderboard_sample": [],    # first few, so we can eyeball pnl scale
-        "cohort_count": 0,
-        "fallback_used": False,      # True = activity filter empty, used pnl-only
-        "error": None,
-    }
-    payload = {
-        "updated": datetime.now(timezone.utc).isoformat(),
-        "cohort": {"size": 0, "minPnl": pc.MIN_MONTH_PNL,
-                   "tpdMin": pc.TRADES_PER_DAY_MIN, "tpdMax": pc.TRADES_PER_DAY_MAX,
-                   "threshold": pc.THRESHOLD},
-        "picks": [],
-        "debug": debug,
-    }
+def build():
+    debug = {"leaderboard_count": None, "top_earners": [], "cohort_count": 0,
+             "fallback_used": False, "error": None}
     picks = []
-
+    cohort = {}
     try:
-        # 1) Probe the leaderboard directly. Is the data API even serving us?
         lb = pc.leaderboard_page(0)
         debug["leaderboard_count"] = len(lb)
-        debug["leaderboard_sample"] = [
-            {"userName": r.get("userName"), "pnl": r.get("pnl")} for r in lb[:5]
+        debug["top_earners"] = [
+            f"{r.get('userName','?')} ${float(r.get('pnl') or 0):,.0f}" for r in lb[:5]
         ]
-        print(f"LEADERBOARD PROBE: {len(lb)} rows returned from data-api")
-
-        # 2) Normal cohort build (prints the distribution table).
         cohort = pc.build_cohort(verbose=True)
-
-        # 3) Fallback: leaderboard works but filters killed everyone -> rank by PnL only.
         if not cohort and lb:
             debug["fallback_used"] = True
-            print("FALLBACK: activity filter left nobody -> taking top earners by PnL only")
-            cohort = {}
             for r in lb[:pc.COHORT_MAX]:
                 w = r.get("proxyWallet")
                 if w and float(r.get("pnl") or 0) >= pc.MIN_MONTH_PNL:
                     cohort[w.lower()] = {"name": r.get("userName") or w[:8],
                                          "pnl": float(r.get("pnl") or 0)}
-
         debug["cohort_count"] = len(cohort)
-        payload["cohort"]["size"] = len(cohort)
-
         if cohort:
             picks = pc.find_consensus(cohort)
-            payload["picks"] = [{
-                "title": p["title"], "outcome": p["outcome"], "ask": p.get("ask"),
-                "count": p["count"], "threshold": pc.THRESHOLD,
-                "holders": p["holders"], "slug": p.get("slug", ""), "asset": p["asset"],
-            } for p in picks]
-
     except Exception as e:
         debug["error"] = f"{type(e).__name__}: {e}"
-        print("ERROR:", debug["error"])
         traceback.print_exc()
+    return cohort, picks, debug
 
-    with open(args.out, "w") as f:
-        json.dump(payload, f, indent=2)
 
-    # The one line that tells you everything, at the very bottom of the log:
-    print(f"\n==> wrote {args.out} | leaderboard={debug['leaderboard_count']} "
-          f"| cohort={debug['cohort_count']} | picks={len(payload['picks'])} "
-          f"| fallback={debug['fallback_used']} | error={debug['error']}")
+def diag_text(debug):
+    lines = ["\U0001F527 DIAGNOSTIC",
+             f"leaderboard rows: {debug['leaderboard_count']}"]
+    if debug["top_earners"]:
+        lines.append("top earners: " + "; ".join(debug["top_earners"]))
+    lines += [f"cohort kept: {debug['cohort_count']}",
+              f"fallback used: {debug['fallback_used']}",
+              f"error: {debug['error']}"]
+    return "\n".join(lines)
 
-    if not args.no_telegram and picks:
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out")
+    ap.add_argument("--diag", action="store_true")
+    args = ap.parse_args()
+
+    cohort, picks, debug = build()
+
+    summary = (f"leaderboard={debug['leaderboard_count']} cohort={debug['cohort_count']} "
+               f"picks={len(picks)} fallback={debug['fallback_used']} error={debug['error']}")
+    print("==>", summary)
+
+    # Send the diagnostic on manual runs or when --diag is passed.
+    manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+    if args.diag or manual:
+        pc.telegram_push(diag_text(debug))
+
+    # Push real consensus hits (deduped).
+    if picks:
         seen = pc.load_state()
         for p in picks:
             sig = f"{p['asset']}:{p['count']}"
@@ -95,6 +90,20 @@ def main():
             pc.announce(p)
             seen.add(sig)
         pc.save_state(seen)
+
+    # Optional dashboard feed.
+    if args.out:
+        payload = {"updated": datetime.now(timezone.utc).isoformat(),
+                   "cohort": {"size": len(cohort), "minPnl": pc.MIN_MONTH_PNL,
+                              "tpdMin": pc.TRADES_PER_DAY_MIN,
+                              "tpdMax": pc.TRADES_PER_DAY_MAX, "threshold": pc.THRESHOLD},
+                   "picks": [{"title": p["title"], "outcome": p["outcome"],
+                              "ask": p.get("ask"), "count": p["count"],
+                              "threshold": pc.THRESHOLD, "holders": p["holders"],
+                              "slug": p.get("slug", ""), "asset": p["asset"]} for p in picks],
+                   "debug": debug}
+        with open(args.out, "w") as f:
+            json.dump(payload, f, indent=2)
 
 
 if __name__ == "__main__":
