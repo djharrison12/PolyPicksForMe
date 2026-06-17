@@ -36,11 +36,11 @@ MIN_MONTH_PNL = 50_000          # profit floor over the last 30 days (lowered)
 TRADES_PER_DAY_MIN = 1.0        # min DISTINCT MARKETS/day (a real, active trader)
 TRADES_PER_DAY_MAX = 20.0       # max DISTINCT MARKETS/day (exclude churn/HFT bots)
 MIN_TRADES_SAMPLE = 10          # need >= this many fills in the window to judge
-COHORT_MAX = 75                 # keep at most this many after ranking (was 40)
+COHORT_MAX = 200                # live cohort size (interim single-tier)
 RANK_BY = "pnl"                 # "pnl" (default) or "efficiency" (profit/bet)
 
 LB_CATEGORY = "SPORTS"          # cohort = top SPORTS earners (your bettable lane)
-LB_MAX_SCAN = 300               # scan deeper to fill the bigger cohort
+LB_MAX_SCAN = 500               # scan deep enough to fill ~200 after filtering
 ACTIVITY_WINDOW_DAYS = 7
 
 # ---------------------------------------------------------------------------
