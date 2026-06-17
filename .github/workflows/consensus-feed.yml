@@ -1,11 +1,15 @@
 name: consensus-feed
 
-# Lean version: just runs the script and lets Telegram be the output.
-# No committing files, no Pages — nothing that needs write access or can fail silently.
+# TIER 2: live loop. Reads traders.json (from the scorer), polls the top 200 by
+# weight, sends graded picks to Telegram, and persists the alert log so grades
+# can be checked against outcomes over time.
 on:
   schedule:
-    - cron: "*/10 * * * *"   # background checks every 10 min (real picks only)
-  workflow_dispatch:          # you clicking "Run workflow" also texts a diagnostic
+    - cron: "*/10 * * * *"   # every 10 min (real graded picks only)
+  workflow_dispatch:          # manual run also texts a diagnostic
+
+permissions:
+  contents: write             # to persist alerts_log.jsonl + state
 
 jobs:
   run:
@@ -21,3 +25,11 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python3 build_feed.py
+      - name: Persist log + state
+        run: |
+          git config user.name "consensus-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -f alerts_log.jsonl seen_consensus2.json 2>/dev/null || true
+          git commit -m "log update" || echo "no change"
+          git pull --rebase --autostash || true
+          git push || echo "push skipped"
