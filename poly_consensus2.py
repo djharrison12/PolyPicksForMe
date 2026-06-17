@@ -22,6 +22,7 @@ import argparse
 import json
 import time
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -52,6 +53,22 @@ MIN_POSITION_USD = 25.0
 # winning tickets, not a bet you can still make money on. Keep the live middle.
 MIN_ASK = 0.05
 MAX_ASK = 0.95
+# Exclude FUTURES: a single game resolves within a day or two; season-long
+# futures resolve weeks/months out. Drop anything resolving further than this.
+MAX_DAYS_TO_RESOLUTION = 5
+
+# --- Two-tier live loop ---
+SCORES_FILE = "traders.json"    # written by score_traders.py (tier 1)
+LIVE_N = 200                    # poll the top-N traders by weight
+DEFAULT_WEIGHT = 0.3            # weight used if a trader has no score yet
+# Archetype: outcome-bets (holders) are what you want; line-trades are penalized
+# and suppressed unless the weighted backing is strong.
+HOLDER_HOLD_RATE = 0.6          # avg hold_rate >= this == outcome bet (full credit)
+LINE_TRADE_HOLD_RATE = 0.3      # avg hold_rate <= this == line-trade (penalized)
+LINE_TRADE_MIN_WEIGHT = 3.0     # a line-trade only surfaces if weight >= this
+# Provisional A-F score bands (tuned later by the resolution log).
+GRADE_BANDS = [("A", 2.5), ("B", 1.8), ("C", 1.2), ("D", 0.7)]  # else F
+ALERTS_LOG = "alerts_log.jsonl" # one line per fired alert (the calibration data)
 
 POLL_SECONDS = 180
 PER_CALL_DELAY = 0.2
@@ -115,6 +132,8 @@ def markets_status(condition_ids):
                 status[cid] = {
                     "open": bool(m.get("acceptingOrders")) and not bool(m.get("closed")),
                     "ask": m.get("bestAsk"),
+                    "end": m.get("endDate") or m.get("endDateIso"),
+                    "game": m.get("gameStartTime"),
                 }
         time.sleep(PER_CALL_DELAY)
     return status
@@ -171,8 +190,79 @@ def build_cohort(verbose=False):
     return cohort
 
 
+def load_scored_cohort(path=SCORES_FILE, n=LIVE_N):
+    """Read traders.json (tier-1 scorer output) and return the top-N by weight as
+    {wallet: {name, weight, hold_rate, pnl}}. Returns None if no scores file —
+    caller can fall back to the inline build_cohort()."""
+    p = Path(__file__).with_name(path)
+    if not p.exists():
+        return None
+    try:
+        data = json.loads(p.read_text())
+    except Exception:
+        return None
+    traders = data.get("traders", [])[:n]
+    if not traders:
+        return None
+    return {t["wallet"].lower(): {"name": t.get("name", t["wallet"][:8]),
+                                  "weight": float(t.get("weight") or DEFAULT_WEIGHT),
+                                  "hold_rate": t.get("hold_rate"),
+                                  "pnl": t.get("pnl")}
+            for t in traders if t.get("wallet")}
+
+
+def grade_bet(bet_weight, avg_hold, move):
+    """Return (grade, score, archetype_label) or None to SUPPRESS the alert.
+    Provisional formula — calibrated later from the resolution log."""
+    if avg_hold is None:
+        arch_factor, arch_label = 0.6, "unknown"
+    elif avg_hold >= HOLDER_HOLD_RATE:
+        arch_factor, arch_label = 1.0, "outcome"
+    elif avg_hold <= LINE_TRADE_HOLD_RATE:
+        arch_factor, arch_label = 0.25, "line-trade"
+    else:
+        span = (avg_hold - LINE_TRADE_HOLD_RATE) / (HOLDER_HOLD_RATE - LINE_TRADE_HOLD_RATE)
+        arch_factor, arch_label = 0.25 + span * 0.75, "mixed"
+
+    # Suppress weak line-trades entirely (your rule: only if strongly backed).
+    if arch_label == "line-trade" and bet_weight < LINE_TRADE_MIN_WEIGHT:
+        return None
+
+    if move is None:
+        entry_factor = 1.0
+    elif move >= 0.05:
+        entry_factor = 0.7
+    elif move <= -0.03:
+        entry_factor = 1.1
+    else:
+        entry_factor = 1.0
+
+    score = bet_weight * arch_factor * entry_factor
+    grade = "F"
+    for g, cutoff in GRADE_BANDS:
+        if score >= cutoff:
+            grade = g
+            break
+    return grade, round(score, 3), arch_label
+
+
+def _days_until(iso_str):
+    """Days from now until an ISO datetime; None if unparseable/missing."""
+    if not iso_str:
+        return None
+    try:
+        s = iso_str.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (dt - datetime.now(timezone.utc)).total_seconds() / 86400.0
+    except (ValueError, TypeError):
+        return None
+
+
 def find_consensus(cohort):
-    by_asset = defaultdict(lambda: {"holders": set(), "meta": None, "entries": []})
+    by_asset = defaultdict(lambda: {"holders": set(), "meta": None,
+                                    "entries": [], "weights": [], "holds": []})
     for wallet, info in cohort.items():
         try:
             positions = get_positions(wallet)
@@ -186,6 +276,10 @@ def find_consensus(cohort):
                 continue
             e = by_asset[asset]
             e["holders"].add(info["name"])
+            e["weights"].append(float(info.get("weight") or DEFAULT_WEIGHT))
+            hr = info.get("hold_rate")
+            if hr is not None:
+                e["holds"].append(float(hr))
             avg = p.get("avgPrice")
             if avg is not None:
                 try:
@@ -213,21 +307,41 @@ def find_consensus(cohort):
         st = status.get(e["meta"]["conditionId"], {})
         if not st.get("open"):
             continue
-        # Price of the side the COHORT HOLDS (from their position), not the
-        # market's generic bestAsk — that bestAsk is the opposite outcome and
-        # caused "No (ask 0.92)" when No actually cost ~0.08.
+        # Exclude futures: prefer game start time, fall back to market end date.
+        horizon = _days_until(st.get("game")) 
+        if horizon is None:
+            horizon = _days_until(st.get("end"))
+        if horizon is not None and horizon > MAX_DAYS_TO_RESOLUTION:
+            continue   # resolves too far out -> it's a future, not a game
         price = e["meta"].get("curPrice")
-        # Skip near-decided markets where this side has little left to win/lose.
         try:
             if price is not None and not (MIN_ASK <= float(price) <= MAX_ASK):
                 continue
         except (TypeError, ValueError):
             pass
+
+        entry = (sum(e["entries"]) / len(e["entries"])) if e["entries"] else None
+        bet_weight = sum(e["weights"])
+        avg_hold = (sum(e["holds"]) / len(e["holds"])) if e["holds"] else None
+        move = None
+        if entry is not None and price is not None:
+            try:
+                move = float(price) - float(entry)
+            except (TypeError, ValueError):
+                move = None
+
+        graded = grade_bet(bet_weight, avg_hold, move)
+        if graded is None:
+            continue   # suppressed (weak line-trade)
+        grade, score, arch_label = graded
+
         out.append({**e["meta"], "asset": asset,
                     "count": len(e["holders"]), "holders": sorted(e["holders"]),
-                    "ask": price,
-                    "entry": (sum(e["entries"]) / len(e["entries"])) if e["entries"] else None})
-    out.sort(key=lambda x: x["count"], reverse=True)
+                    "ask": price, "entry": entry,
+                    "bet_weight": round(bet_weight, 3), "avg_hold": avg_hold,
+                    "archetype": arch_label, "grade": grade, "score": score})
+    # Sort by grade quality (score), best first.
+    out.sort(key=lambda x: x["score"], reverse=True)
     return out
 
 
@@ -260,25 +374,108 @@ def telegram_push(text):
 def announce(item):
     ask = item.get("ask")
     entry = item.get("entry")
+    grade = item.get("grade", "?")
+    arch = item.get("archetype", "?")
     price_str = f"  (price ~{float(ask):.2f})" if ask not in (None, "") else ""
     move_str = ""
     if entry is not None and ask not in (None, ""):
         move = float(ask) - float(entry)
         arrow = "+" if move >= 0 else ""
         move_str = f"\n   Their entry ~{float(entry):.2f} -> now ~{float(ask):.2f} ({arrow}{move:.2f})"
-        # If it's moved meaningfully toward their side, you're entering late.
         if move >= 0.03:
             move_str += "  [line already moved - you're late]"
         elif move <= -0.03:
             move_str += "  [now cheaper than they paid]"
+    grade_line = (f"   Grade {grade}  ({arch}, weight {item.get('bet_weight','?')}, "
+                  f"{item['count']} traders)")
     url = f"https://polymarket.com/event/{item['slug']}" if item.get("slug") else ""
-    msg = (f"\U0001F7E2 {item['count']} cohort traders are ON: {item['title']}\n"
+    msg = (f"\U0001F7E2 Grade {grade}: {item['title']}\n"
            f"   Side: {item['outcome']}{price_str}{move_str}\n"
+           f"{grade_line}\n"
            f"   Who: {', '.join(item['holders'])}")
     if url:
         msg += f"\n   {url}"
     print(msg + "\n")
     telegram_push(msg)
+
+
+def log_alert(item, path=ALERTS_LOG):
+    """Append one fired alert as a JSON line — this is the calibration dataset
+    that lets us later check whether each grade actually wins."""
+    import time as _t
+    rec = {
+        "ts": int(_t.time()),
+        "asset": item.get("asset"),
+        "conditionId": item.get("conditionId"),
+        "slug": item.get("slug"),
+        "title": item.get("title"),
+        "side": item.get("outcome"),
+        "entry": item.get("entry"),
+        "price_at_alert": item.get("ask"),
+        "count": item.get("count"),
+        "bet_weight": item.get("bet_weight"),
+        "avg_hold": item.get("avg_hold"),
+        "archetype": item.get("archetype"),
+        "grade": item.get("grade"),
+        "score": item.get("score"),
+        "resolved": None,      # filled later by resolve_pending()
+        "won": None,
+    }
+    p = Path(__file__).with_name(path)
+    with p.open("a") as f:
+        f.write(json.dumps(rec) + "\n")
+
+
+def resolve_pending(path=ALERTS_LOG):
+    """Check unresolved logged alerts; if their market has settled, record the
+    final price of the side they held (>0.5 == that side won)."""
+    p = Path(__file__).with_name(path)
+    if not p.exists():
+        return
+    lines = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+    pending = [r for r in lines if not r.get("resolved")]
+    if not pending:
+        return
+    cond_ids = list({r["conditionId"] for r in pending if r.get("conditionId")})
+    # Pull current/final state for those markets.
+    state = {}
+    for i in range(0, len(cond_ids), 20):
+        try:
+            rows = _get(f"{GAMMA_API}/markets", {"condition_ids": cond_ids[i:i + 20]})
+        except requests.RequestException:
+            continue
+        for m in rows:
+            cid = m.get("conditionId")
+            if cid:
+                state[cid] = m
+        time.sleep(PER_CALL_DELAY)
+    changed = False
+    for r in lines:
+        if r.get("resolved"):
+            continue
+        m = state.get(r.get("conditionId"))
+        if not m or not bool(m.get("closed")):
+            continue
+        # Final price of the held side: match outcome label to outcomePrices.
+        try:
+            outcomes = m.get("outcomes")
+            prices = m.get("outcomePrices")
+            if isinstance(outcomes, str):
+                outcomes = json.loads(outcomes)
+            if isinstance(prices, str):
+                prices = json.loads(prices)
+            idx = outcomes.index(r["side"]) if r["side"] in outcomes else None
+            final = float(prices[idx]) if idx is not None else None
+        except Exception:
+            final = None
+        r["resolved"] = int(time.time())
+        r["won"] = (final is not None and final > 0.5)
+        r["final_price"] = final
+        changed = True
+    if changed:
+        with p.open("w") as f:
+            for r in lines:
+                f.write(json.dumps(r) + "\n")
 
 
 def run_once(seen):
