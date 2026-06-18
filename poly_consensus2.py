@@ -66,8 +66,9 @@ DEFAULT_WEIGHT = 0.3            # weight used if a trader has no score yet
 HOLDER_HOLD_RATE = 0.6          # avg hold_rate >= this == outcome bet (full credit)
 LINE_TRADE_HOLD_RATE = 0.3      # avg hold_rate <= this == line-trade (penalized)
 LINE_TRADE_MIN_WEIGHT = 3.0     # a line-trade only surfaces if weight >= this
-# Provisional A-F score bands (tuned later by the resolution log).
-GRADE_BANDS = [("A", 2.5), ("B", 1.8), ("C", 1.2), ("D", 0.7)]  # else F
+# A-F score bands, calibrated to the real weight spread (top trader ~0.83,
+# median ~0.08). A = a top trader anchoring support; tune from the log later.
+GRADE_BANDS = [("A", 1.2), ("B", 0.85), ("C", 0.6), ("D", 0.4)]  # else F
 ALERTS_LOG = "alerts_log.jsonl" # one line per fired alert (the calibration data)
 
 POLL_SECONDS = 180
