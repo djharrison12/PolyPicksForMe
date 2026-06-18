@@ -69,13 +69,7 @@ def main():
     except Exception as e:
         print("resolve error:", e)
 
-    # Diagnostic on manual runs.
-    manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
-    if args.diag or manual:
-        top = "; ".join(f"{p['grade']} {p['title'][:30]}" for p in picks[:5]) or "none"
-        pc.telegram_push(f"\U0001F527 DIAGNOSTIC\nsource: {debug['source']}\n"
-                         f"cohort: {debug['cohort_count']}\npicks: {debug['picks']}\n"
-                         f"top: {top}\nerror: {debug['error']}")
+    # Diagnostics removed — only real graded picks notify now.
 
 
 if __name__ == "__main__":
