@@ -1,12 +1,9 @@
 name: consensus-feed
 
-# TIER 2: live loop. Reads traders.json (from the scorer), polls the top 200 by
-# weight, sends graded picks to Telegram, and persists the alert log so grades
-# can be checked against outcomes over time.
+# TIER 2: live loop. Triggered every 5 min by cron-job.org via workflow_dispatch
+# (GitHub's own schedule throttles to every few hours, so it's removed).
 on:
-  schedule:
-    - cron: "*/10 * * * *"   # every 10 min (real graded picks only)
-  workflow_dispatch:          # manual run also texts a diagnostic
+  workflow_dispatch:
 
 permissions:
   contents: write             # to persist alerts_log.jsonl + state
