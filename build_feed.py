@@ -51,15 +51,20 @@ def main():
     print(f"==> source={debug['source']} cohort={debug['cohort_count']} "
           f"picks={debug['picks']} error={debug['error']}")
 
-    # Push + log new graded picks (deduped via state).
+    # Notify ONLY on these; everything else still logs silently for the catalogue.
+    NOTIFY_GRADES = {"A"}
+    NOTIFY_ARCHETYPES = {"outcome"}
+
+    # Log every new graded pick; notify only the A-grade outcome bets.
     if picks:
         seen = pc.load_state()
         for p in picks:
-            sig = f"{p['asset']}:{p['grade']}"   # re-alert if grade changes
+            sig = f"{p['asset']}:{p['grade']}"   # re-process if grade changes
             if sig in seen:
                 continue
-            pc.announce(p)
-            pc.log_alert(p)
+            pc.log_alert(p)                       # log ALL picks (full catalogue)
+            if p.get("grade") in NOTIFY_GRADES and p.get("archetype") in NOTIFY_ARCHETYPES:
+                pc.announce(p)                    # notify only A + outcome
             seen.add(sig)
         pc.save_state(seen)
 
