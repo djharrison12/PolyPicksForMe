@@ -89,19 +89,18 @@ def fetch_trades(wallet, start_ts, end_ts):
     return out
 
 
-def reconstruct_consensus(cohort, days, top_n):
-    """Walk every cohort trader's trades; for each (market, outcome), find the
-    moment the THRESHOLD-th distinct cohort member bought, and grade it then."""
-    end_ts = int(time.time())
-    start_ts = end_ts - days * 86400
+def reconstruct_consensus(cohort, start_ts, end_ts, top_n):
+    """Walk every cohort trader's trades in [start_ts, end_ts]; for each
+    (market, outcome), grade at peak consensus."""
 
     # weight + hold_rate by wallet, top_n by weight
     ranked = sorted(cohort.items(), key=lambda kv: kv[1]["weight"], reverse=True)[:top_n]
     wmap = {w: c["weight"] for w, c in ranked}
     hmap = {w: c.get("hold_rate") for w, c in ranked}
 
-    # gather trades per (cond, asset, outcome)
+    # gather trades per (cond, asset, outcome); also keep per-wallet list for streaks
     by_side = defaultdict(list)   # key -> list of (ts, wallet, price, meta)
+    trades_by_wallet = defaultdict(list)
     for i, (wallet, _) in enumerate(ranked):
         trades = fetch_trades(wallet, start_ts, end_ts)
         for t in trades:
@@ -109,6 +108,7 @@ def reconstruct_consensus(cohort, days, top_n):
                 continue
             key = (t["cond"], t["asset"], t["outcome"])
             by_side[key].append((t["ts"], wallet, t["price"], t))
+            trades_by_wallet[wallet].append(t)
         if (i + 1) % 25 == 0:
             print(f"  …pulled {i+1}/{len(ranked)} traders' activity")
 
@@ -145,8 +145,40 @@ def reconstruct_consensus(cohort, days, top_n):
             "count": len(holders), "bet_weight": round(bet_weight, 3),
             "archetype": arch, "grade": grade,
             "title": last_meta["title"][:48], "slug": last_meta["slug"],
+            "_holders": dict(holders),   # wallet -> entry ts (for streak calc)
         })
-    return signals
+    return signals, trades_by_wallet
+
+
+def compute_streaks(signals, res, all_trades_by_wallet):
+    """For each signal, compute the avg recent win-streak of its backers AS OF the
+    bet's timestamp. LEAKAGE-SAFE: only counts a trader's prior bets placed before
+    this one AND whose market is resolved. Streak = net (wins-losses) over their
+    last up-to-10 such bets, averaged across the cohort backing the signal."""
+    for s in signals:
+        backers = s.get("_holders", {})
+        scores = []
+        for wallet, entry_ts in backers.items():
+            past = []
+            for tr in all_trades_by_wallet.get(wallet, []):
+                if tr["ts"] >= entry_ts:
+                    continue   # only bets placed before this one (no future leak)
+                r = res.get(tr["cond"])
+                if not r:
+                    continue
+                won = r["by_token"].get(str(tr["asset"]))
+                if won is None:
+                    won = r["by_outcome"].get(str(tr["outcome"]).strip().lower())
+                if won is None:
+                    continue
+                past.append((tr["ts"], won))
+            past.sort()
+            last = past[-10:]
+            if last:
+                w = sum(1 for _, x in last if x)
+                scores.append(w - (len(last) - w))   # net streak in -10..+10
+        s["streak"] = round(sum(scores) / len(scores), 2) if scores else None
+        s.pop("_holders", None)
 
 
 def _winning_outcome(m):
@@ -216,24 +248,68 @@ def fetch_resolution(cond_ids):
     return res
 
 
+def enrich_peak(signals):
+    """For each signal, pull the token's price history AFTER convergence and record
+    peak/trough. NOTE: closed markets only return >=12h granularity, so intraday
+    peaks are undercounted. This is a blurry estimate — read directionally only."""
+    for i, s in enumerate(signals):
+        hist = _get(f"{CLOB_API}/prices-history",
+                    {"market": s["asset"], "interval": "max", "fidelity": 60})
+        s["peak_price"] = None
+        s["trough_price"] = None
+        try:
+            pts = (hist or {}).get("history") or []
+            after = [p["p"] for p in pts if p.get("t", 0) >= s["ts"]]
+            if after:
+                s["peak_price"] = round(max(after), 4)
+                s["trough_price"] = round(min(after), 4)
+        except (TypeError, KeyError, ValueError):
+            pass
+        if (i + 1) % 25 == 0:
+            time.sleep(0.3)
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--days", type=int, default=90, help="lookback window")
+    ap.add_argument("--days", type=int, default=90, help="lookback window (ignored if --from given)")
+    ap.add_argument("--from", dest="from_date", default=None,
+                    help="start date YYYY-MM-DD (overrides --days)")
+    ap.add_argument("--to", dest="to_date", default=None,
+                    help="end date YYYY-MM-DD (default: now)")
     ap.add_argument("--top", type=int, default=150, help="top-N cohort by weight")
     ap.add_argument("--traders", default="traders.json")
+    ap.add_argument("--peak", action="store_true",
+                    help="also pull coarse historical peak/trough price per signal "
+                         "(WARNING: closed markets only give >=12h granularity, so "
+                         "intraday peaks are UNDERCOUNTED — read as blurry, not exact)")
     args = ap.parse_args()
+
+    from datetime import datetime, timezone
+    def _parse(d):
+        return int(datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+    end_ts = _parse(args.to_date) if args.to_date else int(time.time())
+    if args.from_date:
+        start_ts = _parse(args.from_date)
+        window_desc = f"{args.from_date} -> {args.to_date or 'now'}"
+    else:
+        start_ts = end_ts - args.days * 86400
+        window_desc = f"last {args.days} days"
 
     cohort_file = json.loads(Path(args.traders).read_text())
     cohort = {t["wallet"]: t for t in cohort_file["traders"]}
     print(f"cohort loaded: {len(cohort)} traders; using top {args.top} by weight")
-    print(f"reconstructing consensus over last {args.days} days "
-          f"(threshold={THRESHOLD}, window={CONSENSUS_WINDOW_S//3600}h)…\n")
+    print(f"reconstructing consensus over {window_desc} "
+          f"(threshold={THRESHOLD})…\n")
 
-    signals = reconstruct_consensus(cohort, args.days, args.top)
+    signals, trades_by_wallet = reconstruct_consensus(cohort, start_ts, end_ts, args.top)
     print(f"\nreconstructed {len(signals)} historical consensus signals")
     if not signals:
-        print("No signals — widen --days or --top, or the activity window is empty.")
+        print("No signals — widen the window or --top.")
         return
+
+    if args.peak:
+        print("pulling coarse peak/trough price per signal (blurry — see warning)…")
+        enrich_peak(signals)
 
     res = fetch_resolution(sorted({s["cond"] for s in signals}))
 
@@ -253,6 +329,32 @@ def main():
             scored += 1
     print(f"scored {scored} of {len(signals)} signals "
           f"({sum(1 for s in signals if s['won'])} wins)")
+
+    # LUCK/MOMENTUM FACTOR (leakage-safe): does hot-backed consensus win more?
+    compute_streaks(signals, res, trades_by_wallet)
+    rs = [s for s in signals if s["won"] is not None and s.get("streak") is not None]
+    if rs:
+        print("\n=== LUCK/MOMENTUM: win% vs price, by cohort streak at bet time ===")
+        print("(streak = avg net wins-minus-losses of backers' last 10 resolved bets)")
+        print("(ALL grades, leakage-safe; still look-ahead biased — read directionally)")
+        print(f"{'streak bucket':<16}{'n':<5}{'win%':<8}{'impl%':<8}{'gap':<8}")
+        bk = [("cold (<0)", -99, -0.01), ("neutral (0-2)", 0, 2),
+              ("warm (2-4)", 2.001, 4), ("hot (4+)", 4.001, 99)]
+        for name, lo, hi in bk:
+            g = [s for s in rs if lo <= s["streak"] <= hi]
+            if not g:
+                print(f"{name:<16}0")
+                continue
+            n = len(g); w = sum(1 for s in g if s["won"])
+            impl = sum(s["price_at_convergence"] for s in g) / n
+            print(f"{name:<16}{n:<5}{w/n*100:<7.1f}{impl*100:<7.1f}{(w/n-impl)*100:+.1f}")
+        # correlation streak vs won
+        xs = [s["streak"] for s in rs]; ys = [1 if s["won"] else 0 for s in rs]
+        n = len(xs); mx = sum(xs)/n; my = sum(ys)/n
+        num = sum((x-mx)*(y-my) for x, y in zip(xs, ys))
+        dx = (sum((x-mx)**2 for x in xs))**.5; dy = (sum((y-my)**2 for y in ys))**.5
+        corr = num/(dx*dy) if dx and dy else 0
+        print(f"\ncorrelation(streak, won): {corr:+.3f}  (n={n}; |r|<0.1 ≈ noise)")
 
     # aggregate by grade
     print("\n=== per-grade: win rate vs implied price (resolved only) ===")
