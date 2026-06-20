@@ -142,27 +142,62 @@ def reconstruct_consensus(cohort, days, top_n):
     return signals
 
 
+def _winning_outcome(m):
+    """Pull the winning outcome from a Gamma market dict, tolerating the several
+    shapes the API uses. Returns the winning outcome string, or None."""
+    def _load(x):
+        if isinstance(x, str):
+            try:
+                return json.loads(x)
+            except ValueError:
+                return [x]
+        return x
+
+    outs = _load(m.get("outcomes"))
+    # 1) resolved price vector: outcomePrices ~ ["1","0"]
+    prices = _load(m.get("outcomePrices"))
+    if outs and prices:
+        try:
+            for o, p in zip(outs, prices):
+                if float(p) > 0.5:
+                    return o
+        except (TypeError, ValueError):
+            pass
+    # 2) explicit winner fields some markets carry
+    for k in ("resolvedOutcome", "winningOutcome", "winner"):
+        if m.get(k):
+            return m[k]
+    # 3) umaResolutionStatus + outcome index
+    idx = m.get("resolvedOutcomeIndex")
+    if outs and idx is not None:
+        try:
+            return outs[int(idx)]
+        except (ValueError, IndexError):
+            pass
+    return None
+
+
 def fetch_resolution(cond_ids):
-    """Map conditionId -> winning outcome string (or None if unresolved)."""
+    """Map conditionId -> winning outcome string (or None if unresolved).
+    Queries one market at a time (more reliable than batched condition_ids)."""
     res = {}
-    for i in range(0, len(cond_ids), 20):
-        chunk = cond_ids[i:i + 20]
-        rows = _get(f"{GAMMA_API}/markets", {"condition_ids": ",".join(chunk)})
+    closed_seen = 0
+    for i, cid in enumerate(cond_ids):
+        rows = _get(f"{GAMMA_API}/markets", {"condition_ids": cid})
         if not rows:
             continue
-        for m in rows:
-            if not m.get("closed"):
-                continue
-            outs = m.get("outcomes")
-            prices = m.get("outcomePrices")
-            try:
-                outs = json.loads(outs) if isinstance(outs, str) else outs
-                prices = json.loads(prices) if isinstance(prices, str) else prices
-                win = next((o for o, p in zip(outs, prices) if float(p) > 0.5), None)
-                res[m.get("conditionId")] = win
-            except (TypeError, ValueError):
-                continue
-        time.sleep(0.2)
+        m = rows[0] if isinstance(rows, list) else rows
+        is_closed = bool(m.get("closed")) or bool(m.get("umaResolutionStatus") == "resolved")
+        if not is_closed:
+            continue
+        closed_seen += 1
+        win = _winning_outcome(m)
+        if win is not None:
+            res[cid] = win
+        if (i + 1) % 50 == 0:
+            time.sleep(0.3)
+    print(f"  resolution: {closed_seen}/{len(cond_ids)} markets closed, "
+          f"{len(res)} scored")
     return res
 
 
@@ -187,14 +222,20 @@ def main():
 
     res = fetch_resolution(sorted({s["cond"] for s in signals}))
 
+    def _norm(x):
+        return str(x).strip().lower()
+
     # score each resolved signal: did the consensus side win?
+    scored = 0
     for s in signals:
         win_outcome = res.get(s["cond"])
         if win_outcome is None:
             s["won"] = None
         else:
-            s["won"] = (str(s["outcome"]).strip().lower()
-                        == str(win_outcome).strip().lower())
+            s["won"] = (_norm(s["outcome"]) == _norm(win_outcome))
+            scored += 1
+    print(f"scored {scored} of {len(signals)} signals "
+          f"({sum(1 for s in signals if s['won'])} wins)")
 
     # aggregate by grade
     print("\n=== per-grade: win rate vs implied price (resolved only) ===")
