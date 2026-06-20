@@ -112,33 +112,40 @@ def reconstruct_consensus(cohort, days, top_n):
         if (i + 1) % 25 == 0:
             print(f"  …pulled {i+1}/{len(ranked)} traders' activity")
 
-    # for each side, find the convergence moment + grade it
-    signals = []   # one per market-side that ever crossed THRESHOLD
+    # for each side, grade at PEAK consensus (all distinct holders), mirroring the
+    # live system which counts simultaneous holders — not buys inside a 6h window.
+    # A trader holds from first buy to resolution, so peak = all distinct buyers.
+    signals = []
     for key, evs in by_side.items():
         evs.sort()
-        seen = {}                       # wallet -> (first ts, price) within window
+        if len(evs) < THRESHOLD:
+            continue
+        holders, first_price, last_meta = {}, {}, None
         for ts, wallet, price, meta in evs:
-            # drop wallets whose buy is older than the rolling window
-            seen = {w: v for w, v in seen.items() if ts - v[0] <= CONSENSUS_WINDOW_S}
-            if wallet not in seen:
-                seen[wallet] = (ts, price)
-            if len(seen) == THRESHOLD:   # the moment it becomes a consensus
-                holders = list(seen.keys())
-                bet_weight = sum(wmap.get(w, 0) for w in holders)
-                holds = [hmap.get(w) for w in holders if hmap.get(w) is not None]
-                avg_hold = sum(holds) / len(holds) if holds else None
-                graded = pc.grade_bet(bet_weight, avg_hold, move=None)
-                if graded is None:
-                    break
-                grade, score, arch = graded
-                signals.append({
-                    "cond": key[0], "asset": key[1], "outcome": key[2],
-                    "ts": ts, "price_at_convergence": round(price, 4),
-                    "count": THRESHOLD, "bet_weight": round(bet_weight, 3),
-                    "archetype": arch, "grade": grade,
-                    "title": meta["title"][:48], "slug": meta["slug"],
-                })
-                break   # record first crossing only
+            if wallet not in holders:
+                holders[wallet] = ts
+                first_price[wallet] = price
+            last_meta = meta
+        if len(holders) < THRESHOLD:
+            continue
+        bet_weight = sum(wmap.get(w, 0) for w in holders)
+        hold_vals = [hmap.get(w) for w in holders if hmap.get(w) is not None]
+        avg_hold = sum(hold_vals) / len(hold_vals) if hold_vals else None
+        graded = pc.grade_bet(bet_weight, avg_hold, move=None)
+        if graded is None:
+            continue
+        grade, score, arch = graded
+        # price at the moment the THRESHOLD-th distinct trader joined (consensus forms)
+        ordered = sorted(holders.items(), key=lambda kv: kv[1])
+        cross_wallet, cross_ts = ordered[THRESHOLD - 1]
+        signals.append({
+            "cond": key[0], "asset": key[1], "outcome": key[2],
+            "ts": cross_ts,
+            "price_at_convergence": round(first_price[cross_wallet], 4),
+            "count": len(holders), "bet_weight": round(bet_weight, 3),
+            "archetype": arch, "grade": grade,
+            "title": last_meta["title"][:48], "slug": last_meta["slug"],
+        })
     return signals
 
 
