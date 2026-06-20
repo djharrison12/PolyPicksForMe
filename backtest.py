@@ -178,14 +178,35 @@ def _winning_outcome(m):
 
 
 def fetch_resolution(cond_ids):
-    """Map conditionId -> winning outcome string (or None if unresolved).
-    Mirrors the WORKING resolve_pending() in poly_consensus2: batch the ids and
-    pass condition_ids as a LIST (requests expands it to repeated params, which
-    is the shape Gamma actually matches — a single joined string returns empty)."""
+    """Map conditionId -> winning outcome string (or None if unresolved)."""
+    # PROBE: the activity endpoint may report a different id than Gamma indexes.
+    # Test one id three ways and dump exactly what comes back.
+    if cond_ids:
+        cid = cond_ids[0]
+        print(f"\n=== RESOLUTION PROBE for {cid} ===")
+        r1 = _get(f"{GAMMA_API}/markets", {"condition_ids": [cid]})
+        print("  A) condition_ids as [list]:", type(r1).__name__,
+              (len(r1) if isinstance(r1, list) else r1) if r1 is not None else "None")
+        r2 = _get(f"{GAMMA_API}/markets", {"condition_ids": cid})
+        print("  B) condition_ids as string:", type(r2).__name__,
+              (len(r2) if isinstance(r2, list) else r2) if r2 is not None else "None")
+        import urllib.request
+        try:
+            u = f"{GAMMA_API}/markets?condition_ids={cid}"
+            raw = urllib.request.urlopen(u, timeout=20).read()[:400]
+            print("  C) raw GET", u[:70], "->", raw[:200])
+        except Exception as e:
+            print("  C) raw GET failed:", repr(e)[:120])
+        # is it maybe a token/asset id, not a conditionId?
+        r3 = _get(f"{GAMMA_API}/markets", {"clob_token_ids": [cid]})
+        print("  D) tried as clob_token_ids:", type(r3).__name__,
+              (len(r3) if isinstance(r3, list) else r3) if r3 is not None else "None")
+        print("=== END PROBE ===\n")
+
     state = {}
     for i in range(0, len(cond_ids), 20):
         batch = cond_ids[i:i + 20]
-        rows = _get(f"{GAMMA_API}/markets", {"condition_ids": batch})  # LIST, not join
+        rows = _get(f"{GAMMA_API}/markets", {"condition_ids": batch})
         if not rows:
             continue
         for m in rows:
