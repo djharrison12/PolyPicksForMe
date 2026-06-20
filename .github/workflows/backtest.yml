@@ -1,0 +1,34 @@
+name: backtest
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "lookback days"
+        default: "90"
+      top:
+        description: "top-N cohort by weight"
+        default: "150"
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: Run backtest
+        run: python3 backtest.py --days ${{ github.event.inputs.days }} --top ${{ github.event.inputs.top }}
+      - name: Save results
+        run: |
+          git config user.name "backtest-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -f backtest_results.json
+          git commit -m "backtest run" || echo "no change"
+          git pull --rebase --autostash || true
+          git push || echo "push skipped"
