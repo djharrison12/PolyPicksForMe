@@ -71,6 +71,15 @@ def activity_full(wallet, days):
     return fills, len(markets), redeems, sells
 
 
+def recent_winrate(redeems, markets):
+    """Cheap recent-success proxy: fraction of recently-settled positions that were
+    REDEEMED (held to a winning settlement) vs the markets they touched. Not a true
+    streak, but a free, forward-clean momentum signal. ~0.5 is neutral."""
+    if not markets:
+        return None
+    return round(min(1.0, redeems / markets), 3)
+
+
 def build_universe():
     """Collect (wallet, name, pnl, vol) for the top sports earners above the floor."""
     out = []
@@ -119,7 +128,8 @@ def score():
         hold_rate = (redeems / closes) if closes > 0 else None   # None = unknown
         rows.append({"wallet": wallet, "name": name, "pnl": pnl, "vol": vol,
                      "roi": roi, "bpd": mkts / ACTIVITY_DAYS,
-                     "hold_rate": hold_rate, "fills": fills})
+                     "hold_rate": hold_rate, "fills": fills,
+                     "recent_winrate": recent_winrate(redeems, mkts)})
         time.sleep(pc.PER_CALL_DELAY)
 
     if not rows:
