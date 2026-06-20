@@ -264,7 +264,8 @@ def _days_until(iso_str):
 
 def find_consensus(cohort):
     by_asset = defaultdict(lambda: {"holders": set(), "meta": None,
-                                    "entries": [], "weights": [], "holds": []})
+                                    "entries": [], "weights": [], "holds": [],
+                                    "usd": 0.0, "wr": []})
     for wallet, info in cohort.items():
         try:
             positions = get_positions(wallet)
@@ -278,10 +279,14 @@ def find_consensus(cohort):
                 continue
             e = by_asset[asset]
             e["holders"].add(info["name"])
+            e["usd"] += float(p.get("currentValue") or 0)   # cohort dollar volume
             e["weights"].append(float(info.get("weight") or DEFAULT_WEIGHT))
             hr = info.get("hold_rate")
             if hr is not None:
                 e["holds"].append(float(hr))
+            wr = info.get("recent_winrate")
+            if wr is not None:
+                e["wr"].append(float(wr))
             avg = p.get("avgPrice")
             if avg is not None:
                 try:
@@ -340,6 +345,9 @@ def find_consensus(cohort):
         out.append({**e["meta"], "asset": asset,
                     "count": len(e["holders"]), "holders": sorted(e["holders"]),
                     "ask": price, "entry": entry,
+                    "cohort_usd": round(e["usd"], 2),
+                    "cohort_winrate": (round(sum(e["wr"]) / len(e["wr"]), 3)
+                                       if e["wr"] else None),
                     "bet_weight": round(bet_weight, 3), "avg_hold": avg_hold,
                     "archetype": arch_label, "grade": grade, "score": score})
     # Sort by grade quality (score), best first.
@@ -415,17 +423,57 @@ def log_alert(item, path=ALERTS_LOG):
         "entry": item.get("entry"),
         "price_at_alert": item.get("ask"),
         "count": item.get("count"),
+        "cohort_usd": item.get("cohort_usd"),
+        "cohort_winrate": item.get("cohort_winrate"),   # momentum proxy
         "bet_weight": item.get("bet_weight"),
         "avg_hold": item.get("avg_hold"),
         "archetype": item.get("archetype"),
         "grade": item.get("grade"),
         "score": item.get("score"),
+        "peak_price": item.get("ask"),    # running max of held-side price (live)
+        "trough_price": item.get("ask"),  # running min of held-side price (live)
         "resolved": None,      # filled later by resolve_pending()
         "won": None,
     }
     p = Path(__file__).with_name(path)
     with p.open("a") as f:
         f.write(json.dumps(rec) + "\n")
+
+
+def update_peaks(path=ALERTS_LOG):
+    """For unresolved alerts, refresh running peak/trough of the held side's live
+    price. Lets us later test whether bets that peaked high resolve better."""
+    p = Path(__file__).with_name(path)
+    if not p.exists():
+        return
+    lines = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+    pending = [r for r in lines if not r.get("resolved")]
+    if not pending:
+        return
+    cond_ids = {r["conditionId"] for r in pending if r.get("conditionId")}
+    status = markets_status(cond_ids)
+    changed = False
+    for r in lines:
+        if r.get("resolved"):
+            continue
+        st = status.get(r.get("conditionId"))
+        if not st:
+            continue
+        cur = st.get("ask")
+        if cur is None:
+            continue
+        try:
+            cur = float(cur)
+        except (TypeError, ValueError):
+            continue
+        pk, tr = r.get("peak_price"), r.get("trough_price")
+        r["peak_price"] = cur if pk is None else max(pk, cur)
+        r["trough_price"] = cur if tr is None else min(tr, cur)
+        changed = True
+    if changed:
+        with p.open("w") as f:
+            for r in lines:
+                f.write(json.dumps(r) + "\n")
 
 
 def resolve_pending(path=ALERTS_LOG):
