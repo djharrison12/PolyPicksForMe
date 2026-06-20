@@ -177,55 +177,35 @@ def _winning_outcome(m):
     return None
 
 
+CLOB_API = "https://clob.polymarket.com"
+
+
 def fetch_resolution(cond_ids):
-    """Map conditionId -> winning outcome string (or None if unresolved)."""
-    # PROBE: the activity endpoint may report a different id than Gamma indexes.
-    # Test one id three ways and dump exactly what comes back.
-    if cond_ids:
-        cid = cond_ids[0]
-        print(f"\n=== RESOLUTION PROBE for {cid} ===")
-        r1 = _get(f"{GAMMA_API}/markets", {"condition_ids": [cid]})
-        print("  A) condition_ids as [list]:", type(r1).__name__,
-              (len(r1) if isinstance(r1, list) else r1) if r1 is not None else "None")
-        r2 = _get(f"{GAMMA_API}/markets", {"condition_ids": cid})
-        print("  B) condition_ids as string:", type(r2).__name__,
-              (len(r2) if isinstance(r2, list) else r2) if r2 is not None else "None")
-        import urllib.request
-        try:
-            u = f"{GAMMA_API}/markets?condition_ids={cid}"
-            raw = urllib.request.urlopen(u, timeout=20).read()[:400]
-            print("  C) raw GET", u[:70], "->", raw[:200])
-        except Exception as e:
-            print("  C) raw GET failed:", repr(e)[:120])
-        # is it maybe a token/asset id, not a conditionId?
-        r3 = _get(f"{GAMMA_API}/markets", {"clob_token_ids": [cid]})
-        print("  D) tried as clob_token_ids:", type(r3).__name__,
-              (len(r3) if isinstance(r3, list) else r3) if r3 is not None else "None")
-        print("=== END PROBE ===\n")
-
-    state = {}
-    for i in range(0, len(cond_ids), 20):
-        batch = cond_ids[i:i + 20]
-        rows = _get(f"{GAMMA_API}/markets", {"condition_ids": batch})
-        if not rows:
-            continue
-        for m in rows:
-            cid = m.get("conditionId")
-            if cid:
-                state[cid] = m
-        time.sleep(0.25)
-
+    """Map conditionId -> {token_id: winner_bool, 'by_outcome': {outcome: bool}}.
+    Uses the CLOB endpoint (Gamma's condition_ids query returns empty for these).
+    CLOB returns each market with tokens[] carrying outcome + winner flags once
+    the market is closed."""
     res = {}
     closed = 0
-    for cid, m in state.items():
+    for i, cid in enumerate(cond_ids):
+        m = _get(f"{CLOB_API}/markets/{cid}", {})
+        if not m or not isinstance(m, dict):
+            continue
         if not bool(m.get("closed")):
             continue
+        toks = m.get("tokens") or []
+        # only trust it if a winner is actually marked
+        if not any(t.get("winner") for t in toks):
+            continue
         closed += 1
-        win = _winning_outcome(m)
-        if win is not None:
-            res[cid] = win
-    print(f"  resolution: fetched {len(state)}/{len(cond_ids)} markets, "
-          f"{closed} closed, {len(res)} scored")
+        res[cid] = {
+            "by_token": {str(t.get("token_id")): bool(t.get("winner")) for t in toks},
+            "by_outcome": {str(t.get("outcome")).strip().lower(): bool(t.get("winner"))
+                           for t in toks},
+        }
+        if (i + 1) % 25 == 0:
+            time.sleep(0.3)
+    print(f"  resolution: {closed}/{len(cond_ids)} markets closed & settled")
     return res
 
 
@@ -250,17 +230,19 @@ def main():
 
     res = fetch_resolution(sorted({s["cond"] for s in signals}))
 
-    def _norm(x):
-        return str(x).strip().lower()
-
     # score each resolved signal: did the consensus side win?
+    # match on asset (token_id) first — exact; fall back to outcome string.
     scored = 0
     for s in signals:
-        win_outcome = res.get(s["cond"])
-        if win_outcome is None:
+        r = res.get(s["cond"])
+        if not r:
             s["won"] = None
-        else:
-            s["won"] = (_norm(s["outcome"]) == _norm(win_outcome))
+            continue
+        won = r["by_token"].get(str(s["asset"]))
+        if won is None:
+            won = r["by_outcome"].get(str(s["outcome"]).strip().lower())
+        s["won"] = won
+        if won is not None:
             scored += 1
     print(f"scored {scored} of {len(signals)} signals "
           f"({sum(1 for s in signals if s['won'])} wins)")
