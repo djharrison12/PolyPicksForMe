@@ -179,44 +179,32 @@ def _winning_outcome(m):
 
 def fetch_resolution(cond_ids):
     """Map conditionId -> winning outcome string (or None if unresolved).
-    Queries one market at a time (more reliable than batched condition_ids)."""
-    res = {}
-    closed_seen = 0
-    for i, cid in enumerate(cond_ids):
-        rows = _get(f"{GAMMA_API}/markets", {"condition_ids": cid})
-
-        # DEBUG: dump the raw shape of the first 3 markets so we can see the
-        # real field names (remove once resolution is confirmed working).
-        if i < 3:
-            print(f"\n--- DEBUG market {i} (cond={cid[:14]}…) ---")
-            if not rows:
-                print("  EMPTY response from condition_ids query")
-                # try the alternate query style as a fallback probe
-                alt = _get(f"{GAMMA_API}/markets/{cid}", {})
-                print("  /markets/{cid} probe:", "got data" if alt else "also empty")
-            else:
-                m = rows[0] if isinstance(rows, list) else rows
-                show = {k: m.get(k) for k in
-                        ("conditionId", "closed", "active", "umaResolutionStatus",
-                         "outcomes", "outcomePrices", "resolvedOutcome",
-                         "winningOutcome", "question")}
-                print("  keys present:", [k for k in m.keys()][:25])
-                print("  resolution fields:", json.dumps(show, default=str)[:300])
-
+    Mirrors the WORKING resolve_pending() in poly_consensus2: batch the ids and
+    pass condition_ids as a LIST (requests expands it to repeated params, which
+    is the shape Gamma actually matches — a single joined string returns empty)."""
+    state = {}
+    for i in range(0, len(cond_ids), 20):
+        batch = cond_ids[i:i + 20]
+        rows = _get(f"{GAMMA_API}/markets", {"condition_ids": batch})  # LIST, not join
         if not rows:
             continue
-        m = rows[0] if isinstance(rows, list) else rows
-        is_closed = bool(m.get("closed")) or bool(m.get("umaResolutionStatus") == "resolved")
-        if not is_closed:
+        for m in rows:
+            cid = m.get("conditionId")
+            if cid:
+                state[cid] = m
+        time.sleep(0.25)
+
+    res = {}
+    closed = 0
+    for cid, m in state.items():
+        if not bool(m.get("closed")):
             continue
-        closed_seen += 1
+        closed += 1
         win = _winning_outcome(m)
         if win is not None:
             res[cid] = win
-        if (i + 1) % 50 == 0:
-            time.sleep(0.3)
-    print(f"\n  resolution: {closed_seen}/{len(cond_ids)} markets closed, "
-          f"{len(res)} scored")
+    print(f"  resolution: fetched {len(state)}/{len(cond_ids)} markets, "
+          f"{closed} closed, {len(res)} scored")
     return res
 
 
