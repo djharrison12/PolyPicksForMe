@@ -11,7 +11,7 @@
     "grade": "A",
     "title": "Spread: Spain (-2.5)",
     "slug": "fifwc-esp-cvi-2026-06-15-spread-home-2pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xa5501b4dc0c99c382b1c2871ad9141c7f58509a0f962f70a38bb6566ec570049",
@@ -25,7 +25,7 @@
     "grade": "B",
     "title": "Will Spain win on 2026-06-15?",
     "slug": "fifwc-esp-cvi-2026-06-15-esp",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xe70fd51f42e61fc309d8e57019a7b76c8dc7bd19b473351d56ff1e125ae0d9d4",
@@ -39,7 +39,7 @@
     "grade": "B",
     "title": "Will IR Iran win on 2026-06-15?",
     "slug": "fifwc-irn-nzl-2026-06-15-irn",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xbc54d73527785bdc7b443cfdf3b0d59558c5ac2bbffca23425ecfbd161b07317",
@@ -53,7 +53,7 @@
     "grade": "A",
     "title": "Will Uruguay win on 2026-06-15?",
     "slug": "fifwc-ksa-ury-2026-06-15-ury",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x0dc1e2c185cad730969d91c50f455f34b4745da7fd5b6a5519aabfa99ffeb395",
@@ -67,7 +67,7 @@
     "grade": "C",
     "title": "UFC Freedom 250: Ciryl Gane vs. Alex Pereira (He",
     "slug": "ufc-cir-ale30-2026-06-14",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xd90bf5f45f24c5de7881707cb5374f3d991388a2d220fa7e0fe2be912cd7642a",
@@ -81,7 +81,7 @@
     "grade": "C",
     "title": "Knicks vs. Spurs",
     "slug": "nba-nyk-sas-2026-06-13",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xcc5ffe6f0dd2ebbdae948dff2ebb541c17fb03eecd9e152bd0c91646d4e0049a",
@@ -95,7 +95,7 @@
     "grade": "B",
     "title": "Spurs vs. Knicks",
     "slug": "nba-sas-nyk-2026-06-10",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x0923f4cd56ffdd032deca9984f9779303b58c6ef9317c0c6490acccb477ba150",
@@ -109,7 +109,7 @@
     "grade": "C",
     "title": "Spurs vs. Knicks",
     "slug": "nba-sas-nyk-2026-06-08",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x17e2f3347e34d8a13572baf10c9b4eb3291217868a0fb84b37f36c80f8e2105a",
@@ -123,7 +123,7 @@
     "grade": "F",
     "title": "Knicks vs. Spurs",
     "slug": "nba-nyk-sas-2026-06-05",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x9bb9f7c70674e2043580bf634753858eded9b360252c06f891688b95a542ac46",
@@ -137,7 +137,7 @@
     "grade": "F",
     "title": "Knicks vs. Spurs",
     "slug": "nba-nyk-sas-2026-06-03",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xb8724de28f0dcdb71b55abc89f54a5788f7d7fc364160ec6a45b941d5c332988",
@@ -151,7 +151,7 @@
     "grade": "F",
     "title": "Spurs vs. Thunder",
     "slug": "nba-sas-okc-2026-05-26",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xc775ae21fba7d1949f6da0c45a880b5ab1a19c39d9c2f4f1b93f37af0bc014d9",
@@ -165,7 +165,7 @@
     "grade": "C",
     "title": "Knicks vs. Cavaliers",
     "slug": "nba-nyk-cle-2026-05-25",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xb199b50c41036d63dbf69a754810f580daf37cfdcaa0ff16c9f7d9e8c2f6eb24",
@@ -179,7 +179,7 @@
     "grade": "D",
     "title": "Thunder vs. Spurs",
     "slug": "nba-okc-sas-2026-05-22",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x9a0da0f25f94fce088c88803b296d48dd19717370dbafa97484f3ddac70ee4dc",
@@ -193,7 +193,7 @@
     "grade": "D",
     "title": "Spurs vs. Thunder",
     "slug": "nba-sas-okc-2026-05-20",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x713641f745d71f6ec61f906237ffca3c8583f251e49384429a63ceb0ccdb2d37",
@@ -207,7 +207,7 @@
     "grade": "F",
     "title": "Will the New York Knicks win the 2026 NBA Finals",
     "slug": "will-the-new-york-knicks-win-the-2026-nba-finals",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x8530b96422523df2024c4242021b58da538c5e94ba525e8f9893c3fc2f469160",
@@ -221,7 +221,7 @@
     "grade": "F",
     "title": "Cavaliers vs. Knicks",
     "slug": "nba-cle-nyk-2026-05-19",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x8246b715242536356d2938f90df8b50271fcf6d7586495249e2e9f75a1101981",
@@ -235,7 +235,7 @@
     "grade": "D",
     "title": "Spurs vs. Thunder",
     "slug": "nba-sas-okc-2026-05-18",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x628679ecbc643ddf9ae021b3fa244ae563f58d35c7f93280900994b5a7dd883a",
@@ -249,7 +249,7 @@
     "grade": "C",
     "title": "Cavaliers vs. Pistons",
     "slug": "nba-cle-det-2026-05-17",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x5376e032a8f5a389b55aeafb39b6985bfb323f8392e304bc48b1b01e9cd39850",
@@ -263,7 +263,7 @@
     "grade": "B",
     "title": "Cavaliers vs. Pistons",
     "slug": "nba-cle-det-2026-05-13",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x4c7aee76714c3a69885cbf6a09c754529b255d038b9547d5cec1836906a0aecb",
@@ -277,7 +277,7 @@
     "grade": "B",
     "title": "Thunder vs. Lakers",
     "slug": "nba-okc-lal-2026-05-11",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xd343b2f246e33cfc1acfe4812958e4f19486dcb74e82889ba585408d06470ff1",
@@ -291,7 +291,7 @@
     "grade": "D",
     "title": "Spurs vs. Timberwolves",
     "slug": "nba-sas-min-2026-05-10",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x63111e350c79af92e1a56ed535541fa19b981a2b5e413b7c476dd9d473414aaa",
@@ -305,7 +305,7 @@
     "grade": "C",
     "title": "Pistons vs. Magic",
     "slug": "nba-det-orl-2026-04-27",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xa9a9acb457b3567dd8d1cacaa400ae6aec8e63f858a4560afdb612161e43e57c",
@@ -319,7 +319,7 @@
     "grade": "F",
     "title": "Timberwolves vs. Nuggets",
     "slug": "nba-min-den-2026-04-20",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xe70fd51f42e61fc309d8e57019a7b76c8dc7bd19b473351d56ff1e125ae0d9d4",
@@ -333,7 +333,7 @@
     "grade": "B",
     "title": "Will IR Iran win on 2026-06-15?",
     "slug": "fifwc-irn-nzl-2026-06-15-irn",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x215be7e1cbc744ce1a85fb891db92b53f933712b5a556e556657c3254f63d260",
@@ -347,7 +347,7 @@
     "grade": "D",
     "title": "Spurs vs. Thunder",
     "slug": "nba-sas-okc-2026-05-30",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x215be7e1cbc744ce1a85fb891db92b53f933712b5a556e556657c3254f63d260",
@@ -361,7 +361,7 @@
     "grade": "F",
     "title": "Spurs vs. Thunder",
     "slug": "nba-sas-okc-2026-05-30",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xb8724de28f0dcdb71b55abc89f54a5788f7d7fc364160ec6a45b941d5c332988",
@@ -375,7 +375,7 @@
     "grade": "C",
     "title": "Spurs vs. Thunder",
     "slug": "nba-sas-okc-2026-05-26",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xed4fa0c7a11d55f2c3bcb5e13d94d10b0dced33d7f195748990be092b70952c3",
@@ -389,7 +389,7 @@
     "grade": "F",
     "title": "UFC Freedom 250: Justin Gaethje vs. Ilia Topuria",
     "slug": "ufc-jus3-ili1-2026-06-14",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x26c10c27cde58e2d6214d65ab562d8142d34723b3b6ec3f40836d24f6d22dfc9",
@@ -403,7 +403,7 @@
     "grade": "F",
     "title": "Will United States win on 2026-06-12?",
     "slug": "fifwc-usa-par-2026-06-12-usa",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xeb332c4077ea1847eaa8a6c1e24a46c9cae14f426d3e7ec08861c3694f15194d",
@@ -417,7 +417,7 @@
     "grade": "D",
     "title": "San Francisco Giants vs. Chicago Cubs",
     "slug": "mlb-sf-chc-2026-06-07",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x2133d63b8c6f4aba47b0c4efd92dacce0e2ccdb39b81bfc85039ee706c41c9e3",
@@ -431,7 +431,7 @@
     "grade": "D",
     "title": "Knicks vs. Cavaliers",
     "slug": "nba-nyk-cle-2026-05-23",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x5159f1aeb43719d812fd7bdde72da589fafe0ab0cff7a861d9a20b2511571d96",
@@ -445,7 +445,7 @@
     "grade": "C",
     "title": "76ers vs. Celtics",
     "slug": "nba-phi-bos-2026-05-02",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x7bed81b0bd1cbe7cae0ad49fcf2d9e068d1ea2da49a36e638712daa55712a184",
@@ -459,7 +459,7 @@
     "grade": "D",
     "title": "Will T\u00fcrkiye win on 2026-06-19?",
     "slug": "fifwc-tur-par-2026-06-19-tur",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x0dc1e2c185cad730969d91c50f455f34b4745da7fd5b6a5519aabfa99ffeb395",
@@ -473,7 +473,7 @@
     "grade": "F",
     "title": "UFC Freedom 250: Ciryl Gane vs. Alex Pereira (He",
     "slug": "ufc-cir-ale30-2026-06-14",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x6f05c7bc5ad978f8f9916f05d30a7f752e02b81508c56d82ed7c9245bca163b0",
@@ -487,7 +487,7 @@
     "grade": "C",
     "title": "Will Mexico win on 2026-06-18?",
     "slug": "fifwc-mex-kr-2026-06-18-mex",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x04b6d6630d49e6513355ff045c96439c929335cb0d18da7792dea6c2fc717ead",
@@ -501,7 +501,7 @@
     "grade": "C",
     "title": "Will France win on 2026-06-16?",
     "slug": "fifwc-fra-sen-2026-06-16-fra",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x0923f4cd56ffdd032deca9984f9779303b58c6ef9317c0c6490acccb477ba150",
@@ -515,7 +515,7 @@
     "grade": "D",
     "title": "Spurs vs. Knicks",
     "slug": "nba-sas-nyk-2026-06-08",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x8ae3768af1a52c8a169c49e53355b4d1ea468988d5a3019cf02d5a91f3b295b2",
@@ -529,7 +529,7 @@
     "grade": "C",
     "title": "Roland Garros ATP: Joao Fonseca vs Novak Djokovi",
     "slug": "atp-fonseca-djokovi-2026-05-29",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xdaf176c727f45efe8bf877d8311e11f203a8fd6bc7fcfd886bdd31748beaf44f",
@@ -543,7 +543,7 @@
     "grade": "C",
     "title": "Nuggets vs. Timberwolves",
     "slug": "nba-den-min-2026-04-30",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xfef657b2f9ed83dd3db24c61d115203e836f9967289cd3281b6b91dcd7338104",
@@ -557,7 +557,7 @@
     "grade": "D",
     "title": "Will Paris Saint-Germain FC win on 2026-05-30?",
     "slug": "ucl-psg-ars-2026-05-30-psg",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x3904885b86a86a2e20b76d92e3eb91ba5e9d6cd3ed294ee759c5f638fe8ec9bb",
@@ -571,7 +571,7 @@
     "grade": "F",
     "title": "Thunder vs. Spurs",
     "slug": "nba-okc-sas-2026-05-28",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x1c28ae00bd1c44f532709cf0f58926699aae2cb59e3c3e699b90f3e16054d6f4",
@@ -585,7 +585,7 @@
     "grade": "C",
     "title": "Roland Garros ATP: Jakub Mensik vs Alexander Zve",
     "slug": "atp-mensik-zverev-2026-06-05",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x8ae3768af1a52c8a169c49e53355b4d1ea468988d5a3019cf02d5a91f3b295b2",
@@ -599,7 +599,7 @@
     "grade": "C",
     "title": "Roland Garros ATP: Joao Fonseca vs Novak Djokovi",
     "slug": "atp-fonseca-djokovi-2026-05-29",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x9df495a416820c808be8e808a60ce835e4cdf86dcd370440d3223b0504a5ab62",
@@ -613,7 +613,7 @@
     "grade": "D",
     "title": "Will Arsenal FC win on 2026-05-10?",
     "slug": "epl-wes-ars-2026-05-10-ars",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x081fe00df5dacacba391b248b1613305e2164bfe0a2f153aff6cb0336c71620f",
@@ -627,7 +627,7 @@
     "grade": "D",
     "title": "Will RC Celta de Vigo win on 2026-04-16?",
     "slug": "uel-cel4-scf-2026-04-16-cel4",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x68f453768fca620057f8abc6403ab7d4a4528c05d2895d2f6168edc23b82f8c7",
@@ -641,7 +641,7 @@
     "grade": "C",
     "title": "Will FC Bayern M\u00fcnchen win on 2026-05-06?",
     "slug": "ucl-bay-psg-2026-05-06-bay",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x1678eaaeeb2bad9384bef5fdc8d1bba9cafd59409d86e48531a0593b6479964e",
@@ -655,7 +655,7 @@
     "grade": "D",
     "title": "Spread: Colombia (-1.5)",
     "slug": "fifwc-uzb-col-2026-06-17-spread-away-1pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x7d531b7f4710a8f00562455db5d409e269564a1415b5da352ba3f3daf33ee98e",
@@ -669,7 +669,7 @@
     "grade": "C",
     "title": "Spread: Portugal (-1.5)",
     "slug": "fifwc-prt-cdr-2026-06-17-spread-home-1pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x4336b7544178f4163ea3c66b2f0acfa554b80cc2f9bed456552837a455f43636",
@@ -683,7 +683,7 @@
     "grade": "D",
     "title": "IR Iran vs. New Zealand: Both Teams to Score",
     "slug": "fifwc-irn-nzl-2026-06-15-btts",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x747f264fcaca0caf62c4610078edc77b44f44c1d6dc417fbb24d312343a5057c",
@@ -697,7 +697,7 @@
     "grade": "D",
     "title": "Saudi Arabia vs. Uruguay: Both Teams to Score",
     "slug": "fifwc-ksa-ury-2026-06-15-btts",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x95c9e927a9e739c1dd0baaa93f9463ec0c1e29154dd1d34241a71eefb1b19f4c",
@@ -711,7 +711,7 @@
     "grade": "D",
     "title": "Will Liverpool FC win on 2026-05-09?",
     "slug": "epl-liv-che-2026-05-09-liv",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xc0915e57bfa81e7c625bbb7154b9d4f19c2b06a7713cbc96f0cb5ea38c28878e",
@@ -725,7 +725,7 @@
     "grade": "D",
     "title": "Roland Garros ATP: Jakub Mensik vs Joao Fonseca",
     "slug": "atp-mensik-fonseca-2026-06-02",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x9188ea717e5239143863359214202750c93c32ca3a7a78c584b93478326b844b",
@@ -739,7 +739,7 @@
     "grade": "D",
     "title": "Roland Garros ATP: Frances Tiafoe vs Matteo Arna",
     "slug": "atp-tiafoe-arnaldi-2026-06-01",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x7f5736786ed94a48af9061c85a22f092b9a59b67cbf43859d8d8bb297fc1ba0b",
@@ -753,7 +753,7 @@
     "grade": "D",
     "title": "Lakers vs. Rockets",
     "slug": "nba-lal-hou-2026-05-01",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x5360d3d712f14b4145ca52c07aeb545452138d308a44e39cfb776320103f7845",
@@ -767,7 +767,7 @@
     "grade": "D",
     "title": "Knicks vs. Hawks",
     "slug": "nba-nyk-atl-2026-04-30",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x0a8418fdab57de8ce4e0c6042810fc635fb7d5718a86d10104fcd0d8cc5f6be9",
@@ -781,7 +781,7 @@
     "grade": "C",
     "title": "Brazil vs. Morocco: O/U 2.5",
     "slug": "fifwc-bra-mar-2026-06-13-total-2pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x7b461ba0d582c03577966cfdf0da2a5cb9696a26b954b5ed1890f82d6f2a3c88",
@@ -795,7 +795,7 @@
     "grade": "D",
     "title": "Pistons vs. Cavaliers",
     "slug": "nba-det-cle-2026-05-15",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x6f05c7bc5ad978f8f9916f05d30a7f752e02b81508c56d82ed7c9245bca163b0",
@@ -809,7 +809,7 @@
     "grade": "D",
     "title": "Will Mexico win on 2026-06-18?",
     "slug": "fifwc-mex-kr-2026-06-18-mex",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xb361c29b5481164886627cb175ed76792df30902e66ec329c0a3853f807fe8e9",
@@ -823,7 +823,7 @@
     "grade": "D",
     "title": "Will England win on 2026-06-17?",
     "slug": "fifwc-eng-hrv-2026-06-17-eng",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x0256ef63427ed0d9eefa1422eee948165a2a215b0741a339025fb08b2cf6e15d",
@@ -837,7 +837,7 @@
     "grade": "F",
     "title": "Will Ghana win on 2026-06-17?",
     "slug": "fifwc-gha-pan-2026-06-17-gha",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x2153377bdb8920a0d3227e9a2a68ddb9a001025918b695fe55f66677836e62c6",
@@ -851,7 +851,7 @@
     "grade": "F",
     "title": "Will Netherlands win on 2026-06-14?",
     "slug": "fifwc-nld-jpn-2026-06-14-nld",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xcaaa1338d38b5c614196c9a926dd84babc3984442f2ec9b937a16284a199ec3a",
@@ -865,7 +865,7 @@
     "grade": "D",
     "title": "Will Portugal win on 2026-06-17?",
     "slug": "fifwc-prt-cdr-2026-06-17-prt",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x2a7a6ab8f4984f1ae82eacd7fb408832a50e63162ac6b98fff1fe094b8e9d3b5",
@@ -879,7 +879,7 @@
     "grade": "C",
     "title": "Will Argentina win on 2026-06-16?",
     "slug": "fifwc-arg-alg-2026-06-16-arg",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xa5501b4dc0c99c382b1c2871ad9141c7f58509a0f962f70a38bb6566ec570049",
@@ -893,7 +893,7 @@
     "grade": "D",
     "title": "Will Spain win on 2026-06-15?",
     "slug": "fifwc-esp-cvi-2026-06-15-esp",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xc6f7e4a015ec643eb49c749da19553a2257add76278a252805a12dfa85103269",
@@ -907,7 +907,7 @@
     "grade": "D",
     "title": "Will Sweden win on 2026-06-14?",
     "slug": "fifwc-swe-tun-2026-06-14-swe",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xa75053ffa630e41fdc08a0885fe0614716ecb13061ac460914bfe498038d5364",
@@ -921,7 +921,7 @@
     "grade": "F",
     "title": "Will Brazil win on 2026-06-13?",
     "slug": "fifwc-bra-mar-2026-06-13-bra",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x965235c45b5ca5cf5afd816a4b05e9523e9b8e4778941fa8ed9b0bd779ef87f3",
@@ -935,7 +935,7 @@
     "grade": "F",
     "title": "Roland Garros ATP: Jannik Sinner vs Juan Manuel ",
     "slug": "atp-sinner-cerund-2026-05-28",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x5038cb8d1ae39e35eded49cbcb86ccf579de09935ba069050db28f07a05c23c1",
@@ -949,7 +949,7 @@
     "grade": "D",
     "title": "Spread: Brazil (-2.5)",
     "slug": "fifwc-bra-hai-2026-06-19-spread-home-2pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xbc28e92d1fa999e842caf926cff56a580fb477f26d8c44c99aa29beb78062241",
@@ -963,7 +963,7 @@
     "grade": "D",
     "title": "Will Morocco win on 2026-06-19?",
     "slug": "fifwc-sco-mar-2026-06-19-mar",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x7ebb07134794576c154f06fbaa1cc61a5292d58e280ce98207977771c0326c27",
@@ -977,7 +977,7 @@
     "grade": "C",
     "title": "Will United States win on 2026-06-19?",
     "slug": "fifwc-usa-aus-2026-06-19-usa",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x864d4155b62431499f469772de81ea9b7daa1c87b78047e4aa9cc2fbcd222640",
@@ -991,7 +991,7 @@
     "grade": "D",
     "title": "Spread: Canada (-1.5)",
     "slug": "fifwc-can-qat-2026-06-18-spread-home-1pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x40207f2e82a81843e316fb06d8a8f28f69f2853e47f28111202e9c70954aca2b",
@@ -1005,7 +1005,7 @@
     "grade": "D",
     "title": "Uzbekistan vs. Colombia: O/U 2.5",
     "slug": "fifwc-uzb-col-2026-06-17-total-2pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xf1dd418c956ef62820d2e263cf8f819a793f4e903218702e26623951eaafde36",
@@ -1019,7 +1019,7 @@
     "grade": "D",
     "title": "England vs. Croatia: O/U 3.5",
     "slug": "fifwc-eng-hrv-2026-06-17-total-3pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x04b6d6630d49e6513355ff045c96439c929335cb0d18da7792dea6c2fc717ead",
@@ -1033,7 +1033,7 @@
     "grade": "F",
     "title": "Will France win on 2026-06-16?",
     "slug": "fifwc-fra-sen-2026-06-16-fra",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x3fbc68160eebf3b359b077b0e5ea8c7052031e84ec159c5002666302f67b508c",
@@ -1047,7 +1047,7 @@
     "grade": "D",
     "title": "Spread: Germany (-3.5)",
     "slug": "fifwc-ger-kor-2026-06-14-spread-home-3pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x802adc7238db42d431521f625b2a367954d04ebf8836109257dd4a3b961c6108",
@@ -1061,7 +1061,7 @@
     "grade": "C",
     "title": "Will Canada win on 2026-06-12?",
     "slug": "fifwc-can-bih-2026-06-12-can",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x870bb248c96c52dcf35390a66542471c5bba2896942d6bc97ade41a418646ba8",
@@ -1075,7 +1075,7 @@
     "grade": "F",
     "title": "Will Switzerland win on 2026-06-18?",
     "slug": "fifwc-che-bih-2026-06-18-che",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xa16a7269a25f746cd0aa5d85910de766d940d4dea9bf0cdb6423158b24149be1",
@@ -1089,7 +1089,7 @@
     "grade": "D",
     "title": "Spread: Uruguay (-1.5)",
     "slug": "fifwc-ksa-ury-2026-06-15-spread-away-1pt5",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xe76d397afa47ea028b914eec69543c69f9bbec8c313bd3a1dba022bd050b4c22",
@@ -1103,7 +1103,7 @@
     "grade": "D",
     "title": "Spread: Spain (-2.5)",
     "slug": "fifwc-esp-cvi-2026-06-15-spread-home-2pt5",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x1f2bb0bfc3c7b3c9ab678ce9e89cf68bd6daa83385c4834f669cb00c540276f2",
@@ -1117,7 +1117,7 @@
     "grade": "D",
     "title": "Will Scotland win on 2026-06-13?",
     "slug": "fifwc-hai-sco-2026-06-13-sco",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xa71f817655a1e3388855598499fbe5dbb1f7904a376b7a792869b19279365dc1",
@@ -1131,7 +1131,7 @@
     "grade": "D",
     "title": "Portugal vs. DR Congo: O/U 2.5",
     "slug": "fifwc-prt-cdr-2026-06-17-total-2pt5",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x8246b715242536356d2938f90df8b50271fcf6d7586495249e2e9f75a1101981",
@@ -1145,7 +1145,7 @@
     "grade": "F",
     "title": "Spurs vs. Thunder",
     "slug": "nba-sas-okc-2026-05-18",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x300e32ca5a62a4980bc95e5e3885930f8b888d26d46fb61e3dd11d87700618e3",
@@ -1159,7 +1159,7 @@
     "grade": "D",
     "title": "United States vs. Australia: Both Teams to Score",
     "slug": "fifwc-usa-aus-2026-06-19-btts",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xc43eed5e30cf6f0220341e6564bf8b4f09ea60eaa9709bf4b96c07544672ab9e",
@@ -1173,7 +1173,7 @@
     "grade": "D",
     "title": "Switzerland vs. Bosnia and Herzegovina: O/U 2.5",
     "slug": "fifwc-che-bih-2026-06-18-total-2pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xb6ccde3a0a30a1ab7551b3ceeb8c146739df954535282c96386926f2d594cd5e",
@@ -1187,7 +1187,7 @@
     "grade": "D",
     "title": "Czechia vs. South Africa: Both Teams to Score",
     "slug": "fifwc-cze-rsa-2026-06-18-btts",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x5585ede820305707cfe1ed1441842e87cd903c07e89d8b738edf025b5a5f94df",
@@ -1201,7 +1201,7 @@
     "grade": "D",
     "title": "England vs. Croatia: Both Teams to Score",
     "slug": "fifwc-eng-hrv-2026-06-17-btts",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x9ad38d22c9912987ca4d644c8b7d239f24afba5c93d16300a8cad778bc6f6858",
@@ -1215,7 +1215,7 @@
     "grade": "D",
     "title": "France vs. Senegal: O/U 2.5",
     "slug": "fifwc-fra-sen-2026-06-16-total-2pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xa71f817655a1e3388855598499fbe5dbb1f7904a376b7a792869b19279365dc1",
@@ -1229,7 +1229,7 @@
     "grade": "D",
     "title": "Portugal vs. DR Congo: O/U 2.5",
     "slug": "fifwc-prt-cdr-2026-06-17-total-2pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x3045a441e5ea4e49468d0fac36d47c32ceae2e572bd7960111187b6630a83b46",
@@ -1243,7 +1243,7 @@
     "grade": "D",
     "title": "Spread: France (-1.5)",
     "slug": "fifwc-fra-sen-2026-06-16-spread-home-1pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x4ad8fd3e8ec4efcc378cc15ab8da7eb71cece5cb30ad4495b515ce9bcc2b325f",
@@ -1257,7 +1257,7 @@
     "grade": "F",
     "title": "Will FC Barcelona win on 2026-05-10?",
     "slug": "lal-bar-rea-2026-05-10-bar",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x3904885b86a86a2e20b76d92e3eb91ba5e9d6cd3ed294ee759c5f638fe8ec9bb",
@@ -1271,7 +1271,7 @@
     "grade": "F",
     "title": "Thunder vs. Spurs",
     "slug": "nba-okc-sas-2026-05-28",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x90b9d20ece132c342654f98e0826e972134b10f58d4789c2662bdc00eee44b13",
@@ -1285,7 +1285,7 @@
     "grade": "D",
     "title": "Will Croatia win on 2026-06-17?",
     "slug": "fifwc-eng-hrv-2026-06-17-hrv",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x7b830121eb0c58c5f4161ecd626af187d199ba1ed7a705a696ebf93e84a1423f",
@@ -1299,7 +1299,7 @@
     "grade": "D",
     "title": "Brazil vs. Haiti: O/U 3.5",
     "slug": "fifwc-bra-hai-2026-06-19-total-3pt5",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xaf82c474327eb07563996ffd644da88da46547cb5ecb1c63fc7f6d67849fdf00",
@@ -1313,7 +1313,7 @@
     "grade": "D",
     "title": "Mexico vs. Korea Republic: Both Teams to Score",
     "slug": "fifwc-mex-kr-2026-06-18-btts",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xd546089cc3627d3edca9e09edc1a4f239e9a5a5e0221a5273997fd6ea606e773",
@@ -1327,7 +1327,7 @@
     "grade": "D",
     "title": "Iraq vs. Norway: O/U 4.5",
     "slug": "fifwc-irq-nor-2026-06-16-total-4pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x825bc4151fd9c139c4f0400c1a6f5d60cf67b2d04f12d69fd9fb5de67b13e4bc",
@@ -1341,7 +1341,7 @@
     "grade": "F",
     "title": "Will Czechia win on 2026-06-18?",
     "slug": "fifwc-cze-rsa-2026-06-18-cze",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x4cca4d1e6722c00e372bd219c15a94d29d09dc34c2599cc5efa9eef82ff67838",
@@ -1355,7 +1355,7 @@
     "grade": "D",
     "title": "Austria vs. Jordan: O/U 2.5",
     "slug": "fifwc-aut-jor-2026-06-17-total-2pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xc0f88d884322bad4aadedfa49a1022636cc6ad248e412bfd8e406b65d4da3de7",
@@ -1369,7 +1369,7 @@
     "grade": "D",
     "title": "Argentina vs. Algeria: O/U 2.5",
     "slug": "fifwc-arg-alg-2026-06-16-total-2pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x870bb248c96c52dcf35390a66542471c5bba2896942d6bc97ade41a418646ba8",
@@ -1383,7 +1383,7 @@
     "grade": "F",
     "title": "Will Switzerland win on 2026-06-18?",
     "slug": "fifwc-che-bih-2026-06-18-che",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xb361c29b5481164886627cb175ed76792df30902e66ec329c0a3853f807fe8e9",
@@ -1397,7 +1397,7 @@
     "grade": "D",
     "title": "Will England win on 2026-06-17?",
     "slug": "fifwc-eng-hrv-2026-06-17-eng",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xcaaa1338d38b5c614196c9a926dd84babc3984442f2ec9b937a16284a199ec3a",
@@ -1411,7 +1411,7 @@
     "grade": "F",
     "title": "Will Portugal win on 2026-06-17?",
     "slug": "fifwc-prt-cdr-2026-06-17-prt",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x3ceb5b631318be5000758200590efe2b308a581d6787c3e7bc050bfd8f627627",
@@ -1425,7 +1425,7 @@
     "grade": "F",
     "title": "Will Belgium win on 2026-06-15?",
     "slug": "fifwc-bel-egy-2026-06-15-bel",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x46fe7c441e749e024f69e9eafa2bfba2c439552c0a03fb6831f4064106562de5",
@@ -1439,7 +1439,7 @@
     "grade": "D",
     "title": "Will Manchester City FC win on 2026-04-19?",
     "slug": "epl-mac-ars-2026-04-19-mac",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xbc28e92d1fa999e842caf926cff56a580fb477f26d8c44c99aa29beb78062241",
@@ -1453,7 +1453,7 @@
     "grade": "F",
     "title": "Will Morocco win on 2026-06-19?",
     "slug": "fifwc-sco-mar-2026-06-19-mar",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xc90f95af1a5d4e392fe9cc484f1b1a0983687865e7b85910ae89300c2076e4a1",
@@ -1467,7 +1467,7 @@
     "grade": "F",
     "title": "Will Canada win on 2026-06-18?",
     "slug": "fifwc-can-qat-2026-06-18-can",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x5dc96d5b6d416507a833231f23a08c69cd04592031519e2d225e2d9860e978cf",
@@ -1481,7 +1481,7 @@
     "grade": "D",
     "title": "Will Arsenal FC win on 2026-05-30?",
     "slug": "ucl-psg-ars-2026-05-30-ars",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xa17b3bd2dd411f60fe59e19a53e99dbc4ca8301b6ec43dba885a19e207b9bd38",
@@ -1495,7 +1495,7 @@
     "grade": "F",
     "title": "Will Juventus FC win on 2026-05-24?",
     "slug": "sea-tor-juv-2026-05-24-juv",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x053f95738ace6c99e1571e0461feed7392fb646efa0d37ec775237e14152ecc6",
@@ -1509,7 +1509,7 @@
     "grade": "F",
     "title": "Will Manchester City FC win on 2026-05-19?",
     "slug": "epl-bou-mac-2026-05-19-mac",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xd793740ea6d03bce7b178f40f96a07429fd68a0f428fa849aa7fa4f07a2bfd42",
@@ -1523,7 +1523,7 @@
     "grade": "F",
     "title": "Will Arsenal FC win on 2026-04-11?",
     "slug": "epl-ars-bou-2026-04-11-ars",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x1c16b60c7e7ddb559964cd64c8f7d5c33adc83c3fbd0fd124587a8adc1ded8dd",
@@ -1537,7 +1537,7 @@
     "grade": "D",
     "title": "Will Paris Saint-Germain FC win on 2026-04-08?",
     "slug": "ucl-psg1-liv1-2026-04-08-psg1",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xceeae51ec212b347500255f0426c79798d5d6eb2e9368210f37761e0ffcae1f2",
@@ -1551,7 +1551,7 @@
     "grade": "D",
     "title": "Mexico vs. Korea Republic: O/U 1.5",
     "slug": "fifwc-mex-kr-2026-06-18-total-1pt5",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x0256ef63427ed0d9eefa1422eee948165a2a215b0741a339025fb08b2cf6e15d",
@@ -1565,7 +1565,7 @@
     "grade": "D",
     "title": "Will Ghana win on 2026-06-17?",
     "slug": "fifwc-gha-pan-2026-06-17-gha",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x864d4155b62431499f469772de81ea9b7daa1c87b78047e4aa9cc2fbcd222640",
@@ -1579,7 +1579,7 @@
     "grade": "F",
     "title": "Spread: Canada (-1.5)",
     "slug": "fifwc-can-qat-2026-06-18-spread-home-1pt5",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x7d9cdb4c651e9cbf57a071bea50f79ab7171374bbd26e43c5fdd0f6ac4b65789",
@@ -1593,7 +1593,7 @@
     "grade": "D",
     "title": "Lakers vs. Thunder: O/U 213.5",
     "slug": "nba-lal-okc-2026-05-05-total-213pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x828c7b109fafae85bfc71b6a1e2cb73b2fd3f80935344133365f6eac62114fcc",
@@ -1607,7 +1607,7 @@
     "grade": "D",
     "title": "Canada vs. Qatar: Both Teams to Score",
     "slug": "fifwc-can-qat-2026-06-18-btts",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xc99fbc9f64fa0f66470f312f42e32f4a40ec3fcad5583a90a8b2be4acb998b10",
@@ -1621,7 +1621,7 @@
     "grade": "D",
     "title": "Switzerland vs. Bosnia and Herzegovina: Both Tea",
     "slug": "fifwc-che-bih-2026-06-18-btts",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xce19de12b7c2d024a682d407f84b9a6ea91b77872b95758fda4b0fa928368c9b",
@@ -1635,7 +1635,7 @@
     "grade": "D",
     "title": "Ghana vs. Panama: Both Teams to Score",
     "slug": "fifwc-gha-pan-2026-06-17-btts",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x2c6fff9c552558c74b976093b920b55a0cebbc51b1a06e04e1b02f8c48677900",
@@ -1649,7 +1649,7 @@
     "grade": "D",
     "title": "France vs. Senegal: Both Teams to Score",
     "slug": "fifwc-fra-sen-2026-06-16-btts",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x0d9ceec323925d837bd3c05da1e66586fe2b3d36f0e4335a749f929a5b2346e8",
@@ -1663,7 +1663,7 @@
     "grade": "D",
     "title": "Belgium vs. Egypt: O/U 2.5",
     "slug": "fifwc-bel-egy-2026-06-15-total-2pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xff78bfbd6823bb76624b50e54e5cbddcac16e6090071aa9e0abd91fcfb71316a",
@@ -1677,7 +1677,7 @@
     "grade": "D",
     "title": "C\u00f4te d'Ivoire vs. Ecuador: Both Teams to Score",
     "slug": "fifwc-civ-ecu-2026-06-14-btts",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x227abab2faf450dc64d2a481519da6a68c6fe42f4ccb547885dafa3bf7b2de09",
@@ -1691,7 +1691,7 @@
     "grade": "D",
     "title": "Netherlands vs. Japan: Both Teams to Score",
     "slug": "fifwc-nld-jpn-2026-06-14-btts",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x95e8c492f878a1c6b04e47caceee107037a26e4a8b040041b28a3be8eb0f6942",
@@ -1705,7 +1705,7 @@
     "grade": "F",
     "title": "Will Mexico vs. Korea Republic end in a draw?",
     "slug": "fifwc-mex-kr-2026-06-18-draw",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x9188ea717e5239143863359214202750c93c32ca3a7a78c584b93478326b844b",
@@ -1719,7 +1719,7 @@
     "grade": "F",
     "title": "Roland Garros ATP: Frances Tiafoe vs Matteo Arna",
     "slug": "atp-tiafoe-arnaldi-2026-06-01",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xe80341a1a7cc66cdc1b89d7f14c5751282b60873ecaeba97ed0c13a2a82ed35e",
@@ -1733,7 +1733,7 @@
     "grade": "F",
     "title": "Mexico vs. South Africa: O/U 2.5",
     "slug": "fifwc-mex-rsa-2026-06-11-total-2pt5",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xbbcfe76bab2399b65954d52a0cb85d38c67fccf7184ba8220bfd7642123c82b9",
@@ -1747,7 +1747,7 @@
     "grade": "D",
     "title": "Spread: England (-2.5)",
     "slug": "fif-eng-nzl-2026-06-06-spread-home-2pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xb6a4e708822037b5d4b33b5be735a4245895363da465aaa47fec68d12c567516",
@@ -1761,7 +1761,7 @@
     "grade": "D",
     "title": "Spurs vs. Timberwolves: O/U 218.5",
     "slug": "nba-sas-min-2026-05-10-total-218pt5",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x09ad3ebd93fc9fcd06a3cdf3ef87e455680df700819f9152091c871e3eeb3a0d",
@@ -1775,7 +1775,7 @@
     "grade": "D",
     "title": "Spread: Rockets (-5.5)",
     "slug": "nba-hou-lal-2026-04-21-spread-away-5pt5",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x2f00e48e914ba6606867a6347e90c48cc1fd4da66cc196a191786637f40848e9",
@@ -1789,7 +1789,7 @@
     "grade": "F",
     "title": "Will Colombia win on 2026-06-17?",
     "slug": "fifwc-uzb-col-2026-06-17-col",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xeb0de200851ebb80eb722c8b02e2226fe76e91e86a7cfe7e38042632e42d5ae9",
@@ -1803,7 +1803,7 @@
     "grade": "F",
     "title": "Will Panama win on 2026-06-17?",
     "slug": "fifwc-gha-pan-2026-06-17-pan",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xa1f3c8115c6145f1c2bde3328ce1a21e89d0dd00385667cdf76bfb89a993e00b",
@@ -1817,7 +1817,7 @@
     "grade": "F",
     "title": "Lakers vs. Thunder",
     "slug": "nba-lal-okc-2026-05-05",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x4cca4d1e6722c00e372bd219c15a94d29d09dc34c2599cc5efa9eef82ff67838",
@@ -1831,7 +1831,7 @@
     "grade": "F",
     "title": "Austria vs. Jordan: O/U 2.5",
     "slug": "fifwc-aut-jor-2026-06-17-total-2pt5",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xf946f993eb6dddb93e04c413b8da82c89306d8ed367cebdb13dc26933c483fab",
@@ -1845,7 +1845,7 @@
     "grade": "D",
     "title": "C\u00f4te d'Ivoire vs. Ecuador: O/U 1.5",
     "slug": "fifwc-civ-ecu-2026-06-14-total-1pt5",
-    "won": null
+    "won": true
   },
   {
     "cond": "0xaf82c474327eb07563996ffd644da88da46547cb5ecb1c63fc7f6d67849fdf00",
@@ -1859,7 +1859,7 @@
     "grade": "F",
     "title": "Mexico vs. Korea Republic: Both Teams to Score",
     "slug": "fifwc-mex-kr-2026-06-18-btts",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x2153377bdb8920a0d3227e9a2a68ddb9a001025918b695fe55f66677836e62c6",
@@ -1873,7 +1873,7 @@
     "grade": "F",
     "title": "Will Netherlands win on 2026-06-14?",
     "slug": "fifwc-nld-jpn-2026-06-14-nld",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x2133d63b8c6f4aba47b0c4efd92dacce0e2ccdb39b81bfc85039ee706c41c9e3",
@@ -1887,7 +1887,7 @@
     "grade": "F",
     "title": "Knicks vs. Cavaliers",
     "slug": "nba-nyk-cle-2026-05-23",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x15869f0d05e99ad5789f647685b2eedbbe4201f8910a2bdb70e5716bd3674e8f",
@@ -1901,7 +1901,7 @@
     "grade": "F",
     "title": "Will Austria win on 2026-06-17?",
     "slug": "fifwc-aut-jor-2026-06-17-aut",
-    "won": null
+    "won": true
   },
   {
     "cond": "0x48880e3355f031da13b5ed1142d209396bdec61acf6c0945234ff6e5edab9ebf",
@@ -1915,7 +1915,7 @@
     "grade": "F",
     "title": "Will T\u00fcrkiye win on 2026-06-14?",
     "slug": "fifwc-aus-tur-2026-06-14-tur",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xa05e65c9f1ec3e3cdf6daee18535cf58ebf658188099dbff6edad06b05ba0bae",
@@ -1929,7 +1929,7 @@
     "grade": "F",
     "title": "Mexico vs. Korea Republic: O/U 2.5",
     "slug": "fifwc-mex-kr-2026-06-18-total-2pt5",
-    "won": null
+    "won": false
   },
   {
     "cond": "0xa7e1a6848a850d55077dd95c9086c66d83774275e1b5eabe54b7200743334a57",
@@ -1943,7 +1943,7 @@
     "grade": "F",
     "title": "Trail Blazers vs. Spurs",
     "slug": "nba-por-sas-2026-04-08",
-    "won": null
+    "won": false
   },
   {
     "cond": "0x0433839be2e0889423ff0a0efae939272899d09c284d309b346d3991d003c4c0",
@@ -1957,6 +1957,6 @@
     "grade": "F",
     "title": "Will Chelsea FC win on 2026-05-04?",
     "slug": "epl-che-not-2026-05-04-che",
-    "won": null
+    "won": true
   }
 ]
