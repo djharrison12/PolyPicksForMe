@@ -2,12 +2,15 @@ name: backtest
 on:
   workflow_dispatch:
     inputs:
-      days:
-        description: "lookback days"
-        default: "90"
+      start:
+        description: "start date YYYY-MM-DD"
+        default: "2025-12-01"
+      end:
+        description: "end date YYYY-MM-DD (blank = today)"
+        default: "2026-03-31"
       top:
         description: "top-N cohort by weight"
-        default: "150"
+        default: "200"
 
 permissions:
   contents: write
@@ -23,7 +26,7 @@ jobs:
           python-version: "3.12"
       - run: pip install requests
       - name: Run backtest
-        run: python3 backtest.py --days ${{ github.event.inputs.days }} --top ${{ github.event.inputs.top }}
+        run: python3 backtest.py --start ${{ github.event.inputs.start }} --end ${{ github.event.inputs.end }} --top ${{ github.event.inputs.top }}
       - name: Save results
         run: |
           git config user.name "backtest-bot"
