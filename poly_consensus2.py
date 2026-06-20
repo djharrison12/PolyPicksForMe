@@ -29,6 +29,7 @@ import requests
 
 DATA_API = "https://data-api.polymarket.com"
 GAMMA_API = "https://gamma-api.polymarket.com"
+CLOB_API = "https://clob.polymarket.com"
 
 # ---------------------------------------------------------------------------
 # COHORT FILTERS  (starting guesses - calibrate from the printed distribution)
@@ -428,8 +429,10 @@ def log_alert(item, path=ALERTS_LOG):
 
 
 def resolve_pending(path=ALERTS_LOG):
-    """Check unresolved logged alerts; if their market has settled, record the
-    final price of the side they held (>0.5 == that side won)."""
+    """Check unresolved logged alerts; if their market has settled, mark won/lost.
+    Uses CLOB /markets/{conditionId} (Gamma's condition_ids query returns empty
+    for these). CLOB returns tokens[] with a `winner` flag once settled; we match
+    on the alert's asset (token_id) for an exact result, falling back to outcome."""
     p = Path(__file__).with_name(path)
     if not p.exists():
         return
@@ -438,45 +441,44 @@ def resolve_pending(path=ALERTS_LOG):
     if not pending:
         return
     cond_ids = list({r["conditionId"] for r in pending if r.get("conditionId")})
-    # Pull current/final state for those markets.
-    state = {}
-    for i in range(0, len(cond_ids), 20):
+    # Pull settled state per market from CLOB.
+    settled = {}   # cond -> {"by_token":{tid:win}, "by_outcome":{out:win}}
+    for cid in cond_ids:
         try:
-            rows = _get(f"{GAMMA_API}/markets", {"condition_ids": cond_ids[i:i + 20]})
+            m = _get(f"{CLOB_API}/markets/{cid}", {})
         except requests.RequestException:
             continue
-        for m in rows:
-            cid = m.get("conditionId")
-            if cid:
-                state[cid] = m
+        if not isinstance(m, dict) or not bool(m.get("closed")):
+            continue
+        toks = m.get("tokens") or []
+        if not any(t.get("winner") for t in toks):
+            continue   # closed but not yet marked settled
+        settled[cid] = {
+            "by_token": {str(t.get("token_id")): bool(t.get("winner")) for t in toks},
+            "by_outcome": {str(t.get("outcome")).strip().lower(): bool(t.get("winner"))
+                           for t in toks},
+        }
         time.sleep(PER_CALL_DELAY)
     changed = False
     for r in lines:
         if r.get("resolved"):
             continue
-        m = state.get(r.get("conditionId"))
-        if not m or not bool(m.get("closed")):
+        s = settled.get(r.get("conditionId"))
+        if not s:
             continue
-        # Final price of the held side: match outcome label to outcomePrices.
-        try:
-            outcomes = m.get("outcomes")
-            prices = m.get("outcomePrices")
-            if isinstance(outcomes, str):
-                outcomes = json.loads(outcomes)
-            if isinstance(prices, str):
-                prices = json.loads(prices)
-            idx = outcomes.index(r["side"]) if r["side"] in outcomes else None
-            final = float(prices[idx]) if idx is not None else None
-        except Exception:
-            final = None
+        won = s["by_token"].get(str(r.get("asset")))
+        if won is None:
+            won = s["by_outcome"].get(str(r.get("side")).strip().lower())
+        if won is None:
+            continue   # couldn't match the held side; leave pending
         r["resolved"] = int(time.time())
-        r["won"] = (final is not None and final > 0.5)
-        r["final_price"] = final
+        r["won"] = bool(won)
         changed = True
     if changed:
         with p.open("w") as f:
             for r in lines:
                 f.write(json.dumps(r) + "\n")
+
 
 
 def run_once(seen):
