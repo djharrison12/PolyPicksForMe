@@ -271,12 +271,11 @@ def enrich_peak(signals):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--days", type=int, default=90, help="lookback window (ignored if --from given)")
-    ap.add_argument("--from", dest="from_date", default=None,
-                    help="start date YYYY-MM-DD (overrides --days)")
-    ap.add_argument("--to", dest="to_date", default=None,
-                    help="end date YYYY-MM-DD (default: now)")
-    ap.add_argument("--top", type=int, default=150, help="top-N cohort by weight")
+    ap.add_argument("--start", required=True,
+                    help="start date YYYY-MM-DD (e.g. 2025-12-01)")
+    ap.add_argument("--end", default=None,
+                    help="end date YYYY-MM-DD (default: today)")
+    ap.add_argument("--top", type=int, default=200, help="top-N cohort by weight")
     ap.add_argument("--traders", default="traders.json")
     ap.add_argument("--peak", action="store_true",
                     help="also pull coarse historical peak/trough price per signal "
@@ -287,13 +286,9 @@ def main():
     from datetime import datetime, timezone
     def _parse(d):
         return int(datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
-    end_ts = _parse(args.to_date) if args.to_date else int(time.time())
-    if args.from_date:
-        start_ts = _parse(args.from_date)
-        window_desc = f"{args.from_date} -> {args.to_date or 'now'}"
-    else:
-        start_ts = end_ts - args.days * 86400
-        window_desc = f"last {args.days} days"
+    start_ts = _parse(args.start)
+    end_ts = _parse(args.end) if args.end else int(time.time())
+    window_desc = f"{args.start} -> {args.end or 'today'}"
 
     cohort_file = json.loads(Path(args.traders).read_text())
     cohort = {t["wallet"]: t for t in cohort_file["traders"]}
