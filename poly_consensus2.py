@@ -409,6 +409,30 @@ def announce(item):
     telegram_push(msg)
 
 
+def classify_sport(slug, title):
+    """Best-effort sport tag from the market slug/title, so the forward log can be
+    sliced by sport (soccer tournament vs NFL vs NBA, etc.). Returns a short tag."""
+    s = f"{slug or ''} {title or ''}".lower()
+    leagues = [
+        ("nfl", ["nfl", "super bowl", "afc", "nfc"]),
+        ("nba", ["nba", "celtics", "lakers", "warriors", "nuggets"]),
+        ("nhl", ["nhl", "stanley cup"]),
+        ("mlb", ["mlb", "world series"]),
+        ("ncaaf", ["ncaaf", "college football", "cfb"]),
+        ("ncaab", ["ncaab", "march madness", "ncaa tournament"]),
+        ("soccer", ["world cup", "uefa", "premier league", "la liga",
+                    "champions league", "epl", "fifa", "serie a", "bundesliga",
+                    " vs ", "draw"]),
+        ("ufc/mma", ["ufc", "mma", "bellator"]),
+        ("tennis", ["atp", "wta", "wimbledon", "open"]),
+        ("golf", ["pga", "masters", "golf"]),
+    ]
+    for tag, kws in leagues:
+        if any(k in s for k in kws):
+            return tag
+    return "other"
+
+
 def log_alert(item, path=ALERTS_LOG):
     """Append one fired alert as a JSON line — this is the calibration dataset
     that lets us later check whether each grade actually wins."""
@@ -419,6 +443,7 @@ def log_alert(item, path=ALERTS_LOG):
         "conditionId": item.get("conditionId"),
         "slug": item.get("slug"),
         "title": item.get("title"),
+        "sport": classify_sport(item.get("slug"), item.get("title")),
         "side": item.get("outcome"),
         "entry": item.get("entry"),
         "price_at_alert": item.get("ask"),
@@ -440,9 +465,23 @@ def log_alert(item, path=ALERTS_LOG):
         f.write(json.dumps(rec) + "\n")
 
 
-def update_peaks(path=ALERTS_LOG):
-    """For unresolved alerts, refresh running peak/trough of the held side's live
-    price. Lets us later test whether bets that peaked high resolve better."""
+def token_price(token_id):
+    """Live price of a SPECIFIC token (outcome side) from CLOB. This is the price
+    of the exact side the alert is on — unlike Gamma's market-level bestAsk, which
+    can be the wrong side. Returns float or None."""
+    try:
+        r = _get(f"{CLOB_API}/midpoint", {"token_id": token_id})
+        if r and r.get("mid") is not None:
+            return float(r["mid"])
+    except (requests.RequestException, TypeError, ValueError, KeyError):
+        pass
+    return None
+
+
+def update_peaks(path=ALERTS_LOG, verbose=True):
+    """For unresolved alerts, refresh running peak/trough of the HELD SIDE's live
+    price, fetched per-token from CLOB (the correct side). Lets us later test
+    whether bets that peaked high resolve better."""
     p = Path(__file__).with_name(path)
     if not p.exists():
         return
@@ -450,26 +489,27 @@ def update_peaks(path=ALERTS_LOG):
     pending = [r for r in lines if not r.get("resolved")]
     if not pending:
         return
-    cond_ids = {r["conditionId"] for r in pending if r.get("conditionId")}
-    status = markets_status(cond_ids)
-    changed = False
+    changed = got_price = 0
     for r in lines:
         if r.get("resolved"):
             continue
-        st = status.get(r.get("conditionId"))
-        if not st:
+        token = r.get("asset")
+        if not token:
             continue
-        cur = st.get("ask")
+        cur = token_price(token)
         if cur is None:
             continue
-        try:
-            cur = float(cur)
-        except (TypeError, ValueError):
-            continue
+        got_price += 1
         pk, tr = r.get("peak_price"), r.get("trough_price")
-        r["peak_price"] = cur if pk is None else max(pk, cur)
-        r["trough_price"] = cur if tr is None else min(tr, cur)
-        changed = True
+        new_pk = cur if pk is None else max(pk, cur)
+        new_tr = cur if tr is None else min(tr, cur)
+        if new_pk != pk or new_tr != tr:
+            r["peak_price"], r["trough_price"] = new_pk, new_tr
+            changed += 1
+        time.sleep(PER_CALL_DELAY)
+    if verbose:
+        print(f"  update_peaks: {len(pending)} pending, "
+              f"{got_price} got live price, {changed} moved")
     if changed:
         with p.open("w") as f:
             for r in lines:
