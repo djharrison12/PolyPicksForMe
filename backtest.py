@@ -89,7 +89,7 @@ def fetch_trades(wallet, start_ts, end_ts):
     return out
 
 
-def reconstruct_consensus(cohort, start_ts, end_ts, top_n):
+def reconstruct_consensus(cohort, start_ts, end_ts, top_n, threshold=THRESHOLD):
     """Walk every cohort trader's trades in [start_ts, end_ts]; for each
     (market, outcome), grade at peak consensus."""
 
@@ -118,7 +118,7 @@ def reconstruct_consensus(cohort, start_ts, end_ts, top_n):
     signals = []
     for key, evs in by_side.items():
         evs.sort()
-        if len(evs) < THRESHOLD:
+        if len(evs) < threshold:
             continue
         holders, first_price, last_meta = {}, {}, None
         for ts, wallet, price, meta in evs:
@@ -126,7 +126,7 @@ def reconstruct_consensus(cohort, start_ts, end_ts, top_n):
                 holders[wallet] = ts
                 first_price[wallet] = price
             last_meta = meta
-        if len(holders) < THRESHOLD:
+        if len(holders) < threshold:
             continue
         bet_weight = sum(wmap.get(w, 0) for w in holders)
         hold_vals = [hmap.get(w) for w in holders if hmap.get(w) is not None]
@@ -137,7 +137,7 @@ def reconstruct_consensus(cohort, start_ts, end_ts, top_n):
         grade, score, arch = graded
         # price at the moment the THRESHOLD-th distinct trader joined (consensus forms)
         ordered = sorted(holders.items(), key=lambda kv: kv[1])
-        cross_wallet, cross_ts = ordered[THRESHOLD - 1]
+        cross_wallet, cross_ts = ordered[threshold - 1]
         signals.append({
             "cond": key[0], "asset": key[1], "outcome": key[2],
             "ts": cross_ts,
@@ -276,6 +276,8 @@ def main():
     ap.add_argument("--end", default=None,
                     help="end date YYYY-MM-DD (default: today)")
     ap.add_argument("--top", type=int, default=200, help="top-N cohort by weight")
+    ap.add_argument("--threshold", type=int, default=THRESHOLD,
+                    help="min distinct traders to form consensus (default 5; try 4 for more signals)")
     ap.add_argument("--traders", default="traders.json")
     ap.add_argument("--peak", action="store_true",
                     help="also pull coarse historical peak/trough price per signal "
@@ -294,9 +296,9 @@ def main():
     cohort = {t["wallet"]: t for t in cohort_file["traders"]}
     print(f"cohort loaded: {len(cohort)} traders; using top {args.top} by weight")
     print(f"reconstructing consensus over {window_desc} "
-          f"(threshold={THRESHOLD})…\n")
+          f"(threshold={args.threshold})…\n")
 
-    signals, trades_by_wallet = reconstruct_consensus(cohort, start_ts, end_ts, args.top)
+    signals, trades_by_wallet = reconstruct_consensus(cohort, start_ts, end_ts, args.top, args.threshold)
     print(f"\nreconstructed {len(signals)} historical consensus signals")
     if not signals:
         print("No signals — widen the window or --top.")
