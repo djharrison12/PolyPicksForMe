@@ -62,6 +62,27 @@ MAX_DAYS_TO_RESOLUTION = 5
 SCORES_FILE = "traders.json"    # written by score_traders.py (tier 1)
 LIVE_N = 200                    # poll the top-N traders by weight
 DEFAULT_WEIGHT = 0.3            # weight used if a trader has no score yet
+
+# ---------------------------------------------------------------------------
+# MANUAL TRADER WEIGHT OVERRIDES  (the "standout sharps" from persistence tests)
+# These traders showed a persistent positive gap over price across multiple
+# independent backtest windows (incl. across the NBA->World Cup sport boundary).
+# We BOOST their weight so their presence heavily favors a bet — but it still
+# flows through the normal consensus grade, so an A still needs corroboration
+# rather than firing on one trader alone. NOTE: these gaps are BACKTEST (look-
+# ahead biased); boosted-grade bets are TAGGED so the forward log can confirm
+# whether these traders' live picks actually win before we trust them further.
+# Match is by trader NAME (case-insensitive); falls back to scorer weight if absent.
+TRADER_WEIGHT_OVERRIDES = {
+    "damed21": 1.2,          # most persistent: ~+14 gap across 4 windows; alone ~= A threshold
+    "0xd2b5a4": 0.85,        # +35/+29 but small samples — heavy hitter, watch magnitude
+    "wigglew": 0.85,         # +11.9/+12.0, unusually stable across windows
+    "lyj777": 0.8,           # +10.4/+14.6, decent samples
+    "unknowngambler": 0.8,   # +20.7/+10.2, held across both
+    "Mk756": 0.7,            # +9.0/+4.0, positive both windows
+}
+# Boost is only applied to these names; everyone else keeps their scorer weight.
+
 # Archetype: outcome-bets (holders) are what you want; line-trades are penalized
 # and suppressed unless the weighted backing is strong.
 HOLDER_HOLD_RATE = 0.6          # avg hold_rate >= this == outcome bet (full credit)
@@ -195,7 +216,12 @@ def build_cohort(verbose=False):
 def load_scored_cohort(path=SCORES_FILE, n=LIVE_N):
     """Read traders.json (tier-1 scorer output) and return the top-N by weight as
     {wallet: {name, weight, hold_rate, pnl}}. Returns None if no scores file —
-    caller can fall back to the inline build_cohort()."""
+    caller can fall back to the inline build_cohort().
+
+    Applies TRADER_WEIGHT_OVERRIDES: the standout sharps get their boosted weight,
+    and are force-included even if their scorer weight would rank them outside the
+    top-N (several of them are low-weight by the scorer, which is the whole point —
+    the scorer misses them, so we'd lose them without this)."""
     p = Path(__file__).with_name(path)
     if not p.exists():
         return None
@@ -203,14 +229,39 @@ def load_scored_cohort(path=SCORES_FILE, n=LIVE_N):
         data = json.loads(p.read_text())
     except Exception:
         return None
-    traders = data.get("traders", [])[:n]
-    if not traders:
+    all_traders = data.get("traders", [])
+    if not all_traders:
         return None
-    return {t["wallet"].lower(): {"name": t.get("name", t["wallet"][:8]),
-                                  "weight": float(t.get("weight") or DEFAULT_WEIGHT),
-                                  "hold_rate": t.get("hold_rate"),
-                                  "pnl": t.get("pnl")}
-            for t in traders if t.get("wallet")}
+
+    overrides_lc = {k.lower(): v for k, v in TRADER_WEIGHT_OVERRIDES.items()}
+
+    def effective_weight(t):
+        name = (t.get("name") or "").lower()
+        if name in overrides_lc:
+            return overrides_lc[name], True
+        return float(t.get("weight") or DEFAULT_WEIGHT), False
+
+    # take top-N by scorer weight, but also force-include any override trader.
+    top = all_traders[:n]
+    top_names = {(t.get("name") or "").lower() for t in top}
+    extras = [t for t in all_traders[n:]
+              if (t.get("name") or "").lower() in overrides_lc
+              and (t.get("name") or "").lower() not in top_names]
+    selected = top + extras
+
+    cohort = {}
+    for t in selected:
+        if not t.get("wallet"):
+            continue
+        w, boosted = effective_weight(t)
+        cohort[t["wallet"].lower()] = {
+            "name": t.get("name", t["wallet"][:8]),
+            "weight": w,
+            "boosted": boosted,          # flag: weight came from an override
+            "hold_rate": t.get("hold_rate"),
+            "pnl": t.get("pnl"),
+        }
+    return cohort
 
 
 def grade_bet(bet_weight, avg_hold, move):
@@ -265,7 +316,7 @@ def _days_until(iso_str):
 def find_consensus(cohort):
     by_asset = defaultdict(lambda: {"holders": set(), "meta": None,
                                     "entries": [], "weights": [], "holds": [],
-                                    "usd": 0.0, "wr": []})
+                                    "usd": 0.0, "wr": [], "sharps": set()})
     for wallet, info in cohort.items():
         try:
             positions = get_positions(wallet)
@@ -279,6 +330,8 @@ def find_consensus(cohort):
                 continue
             e = by_asset[asset]
             e["holders"].add(info["name"])
+            if info.get("boosted"):
+                e["sharps"].add(info["name"])   # a standout-sharp is in this bet
             e["usd"] += float(p.get("currentValue") or 0)   # cohort dollar volume
             e["weights"].append(float(info.get("weight") or DEFAULT_WEIGHT))
             hr = info.get("hold_rate")
@@ -349,6 +402,8 @@ def find_consensus(cohort):
                     "cohort_winrate": (round(sum(e["wr"]) / len(e["wr"]), 3)
                                        if e["wr"] else None),
                     "bet_weight": round(bet_weight, 3), "avg_hold": avg_hold,
+                    "sharps": sorted(e["sharps"]),       # standout traders in this bet
+                    "sharp_driven": bool(e["sharps"]),   # did a boosted trader help reach grade?
                     "archetype": arch_label, "grade": grade, "score": score})
     # Sort by grade quality (score), best first.
     out.sort(key=lambda x: x["score"], reverse=True)
@@ -398,10 +453,12 @@ def announce(item):
             move_str += "  [now cheaper than they paid]"
     grade_line = (f"   Grade {grade}  ({arch}, weight {item.get('bet_weight','?')}, "
                   f"{item['count']} traders)")
+    sharps = item.get("sharps") or []
+    sharp_line = f"\n   \u2b50 Sharps in: {', '.join(sharps)}" if sharps else ""
     url = f"https://polymarket.com/event/{item['slug']}" if item.get("slug") else ""
     msg = (f"\U0001F7E2 Grade {grade}: {item['title']}\n"
            f"   Side: {item['outcome']}{price_str}{move_str}\n"
-           f"{grade_line}\n"
+           f"{grade_line}{sharp_line}\n"
            f"   Who: {', '.join(item['holders'])}")
     if url:
         msg += f"\n   {url}"
@@ -455,6 +512,8 @@ def log_alert(item, path=ALERTS_LOG):
         "archetype": item.get("archetype"),
         "grade": item.get("grade"),
         "score": item.get("score"),
+        "sharps": item.get("sharps"),             # standout traders in this bet
+        "sharp_driven": item.get("sharp_driven"), # did a boosted sharp help reach grade?
         "peak_price": item.get("ask"),    # running max of held-side price (live)
         "trough_price": item.get("ask"),  # running min of held-side price (live)
         "resolved": None,      # filled later by resolve_pending()
