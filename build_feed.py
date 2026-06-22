@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """
 build_feed.py — TIER 2 live loop.
-
 Reads traders.json (from score_traders.py), polls the top-N by weight, finds
 WEIGHTED, GRADED consensus in still-open markets, texts new picks, and logs
 every alert so grades can be checked against outcomes later.
-
 Output is Telegram (no files needed to read). It also:
   - logs each fired alert to alerts_log.jsonl (the calibration dataset)
+  - refreshes peak/trough of the held side's live price for open alerts
   - resolves past alerts whose markets have settled
   - on a MANUAL run, texts a one-line diagnostic
-
 Falls back to the inline build_cohort() if traders.json isn't there yet, so it
 still works before the first scorer run.
 """
-
 import argparse
 import os
 import traceback
@@ -68,13 +65,20 @@ def main():
             seen.add(sig)
         pc.save_state(seen)
 
+    # Refresh peak/trough of the held-side price for still-open alerts BEFORE
+    # resolving — catches the live price while the market is still open. Once a
+    # bet resolves, update_peaks skips it, so this gives each open bet one last
+    # peak check per cycle right up until it settles.
+    try:
+        pc.update_peaks()
+    except Exception as e:
+        print("update_peaks error:", e)
+
     # Update outcomes for past alerts whose markets have settled.
     try:
         pc.resolve_pending()
     except Exception as e:
         print("resolve error:", e)
-
-    # Diagnostics removed — only real graded picks notify now.
 
 
 if __name__ == "__main__":
