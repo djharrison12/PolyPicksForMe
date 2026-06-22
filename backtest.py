@@ -528,6 +528,57 @@ def favorite_report(signals, fav_cut=0.5):
     print("the GRADE is doing nothing — it's pure favorite effect (chalk window).")
 
 
+def prematch_calibration(signals):
+    """DESCRIPTIVE ONLY — NOT an edge test, NOT the real pre-match line.
+
+    Historical closed markets only expose a blurry, low-granularity price history,
+    so we CANNOT reconstruct the true kickoff/closing line from the past. What we
+    CAN do is bucket resolved bets by price_at_convergence (the LIVE price when the
+    in-game consensus formed) and check whether the system's win rate tracks price
+    sensibly across the favorite spectrum. This is a sanity/calibration check on
+    behavior, NOT proof of edge:
+      - price_at_convergence is a LIVE in-game price, not the pre-match line, so a
+        positive 'gap' here can be the live-price/peak circularity, not real edge.
+      - still look-ahead biased ~+29pts like every backtest here.
+    The REAL test (do A-outcome alerts beat the closing line) requires the forward
+    prematch_lines.jsonl sidecar now being collected by build_feed.py. Wait for it.
+    """
+    res = [s for s in signals if s.get("won") is not None
+           and s.get("price_at_convergence") is not None]
+    print("\n=== PRE-MATCH CALIBRATION (DESCRIPTIVE ONLY — NOT AN EDGE TEST) ===")
+    print("buckets by price_at_convergence (LIVE price, NOT the pre-match line).")
+    print("a positive gap here is NOT confirmed edge — it can be live-price")
+    print("circularity + look-ahead bias. real test = forward prematch sidecar.\n")
+
+    def line(rows, label):
+        n = len(rows)
+        if not n:
+            print(f"{label:30} n=  0   —")
+            return
+        w = sum(1 for r in rows if r["won"])
+        impl = sum(r["price_at_convergence"] for r in rows) / n
+        print(f"{label:30} n={n:3} win%={w/n*100:5.1f} avgpx={impl*100:5.1f} "
+              f"gap={(w/n-impl)*100:+6.1f}")
+
+    buckets = [("0.05-0.30 (dog)", 0.05, 0.30), ("0.30-0.45", 0.30, 0.45),
+               ("0.45-0.55 (toss)", 0.45, 0.55), ("0.55-0.70", 0.55, 0.70),
+               ("0.70-0.95 (fav)", 0.70, 0.95)]
+    print("--- ALL resolved, by convergence-price bucket ---")
+    for name, lo, hi in buckets:
+        line([s for s in res if lo <= s["price_at_convergence"] < hi], name)
+
+    print("\n--- A-OUTCOME only, by convergence-price bucket ---")
+    ao = [s for s in res if s["grade"] == "A" and s["archetype"] == "outcome"]
+    for name, lo, hi in buckets:
+        line([s for s in ao if lo <= s["price_at_convergence"] < hi], name)
+    line(ao, "  A-outcome (all)")
+
+    print("\nread: if win% roughly tracks avgpx in each bucket (gap near 0), the")
+    print("system is well-calibrated to price and there's no free edge from")
+    print("favorite-ness. a big POSITIVE gap in fav buckets is most likely the")
+    print("live-price circularity, NOT a signal — confirm only via forward sidecar.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", required=True,
@@ -551,6 +602,10 @@ def main():
                     help="tag bets by favorite (price>=0.5) and report win-vs-price "
                          "by grade/archetype/sport; answers 'does mixed-favorite beat "
                          "the price or just ride chalk?' then exit")
+    ap.add_argument("--prematch-calibration", action="store_true",
+                    help="DESCRIPTIVE ONLY: bucket bets by convergence-price and show "
+                         "win-vs-price; sanity check, NOT an edge test (can't get the "
+                         "real pre-match line from history). then exit")
     ap.add_argument("--peak", action="store_true",
                     help="also pull coarse historical peak/trough price per signal "
                          "(WARNING: closed markets only give >=12h granularity, so "
@@ -618,6 +673,10 @@ def main():
 
     if args.favorite_report:
         favorite_report(signals)
+        return
+
+    if args.prematch_calibration:
+        prematch_calibration(signals)
         return
 
     # LUCK/MOMENTUM FACTOR (leakage-safe): does hot-backed consensus win more?
