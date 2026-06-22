@@ -14,6 +14,12 @@ on:
       threshold:
         description: "min traders for consensus (5 = default, 4 = looser/more signals)"
         default: "5"
+      trader_report:
+        description: "trader report? (type yes to see who made the correct trades)"
+        default: "no"
+      min_bets:
+        description: "min bets per trader for report (only used if trader_report=yes)"
+        default: "15"
 
 permissions:
   contents: write
@@ -29,12 +35,17 @@ jobs:
           python-version: "3.12"
       - run: pip install requests
       - name: Run backtest
-        run: >
-          python3 backtest.py
-          --start ${{ github.event.inputs.start }}
-          --end ${{ github.event.inputs.end }}
-          --top ${{ github.event.inputs.top }}
-          --threshold ${{ github.event.inputs.threshold }}
+        run: |
+          FLAGS=""
+          if [ "${{ github.event.inputs.trader_report }}" = "yes" ]; then
+            FLAGS="--trader-report --min-bets ${{ github.event.inputs.min_bets }}"
+          fi
+          python3 backtest.py \
+            --start ${{ github.event.inputs.start }} \
+            --end ${{ github.event.inputs.end }} \
+            --top ${{ github.event.inputs.top }} \
+            --threshold ${{ github.event.inputs.threshold }} \
+            $FLAGS
       - name: Save results
         run: |
           git config user.name "backtest-bot"
