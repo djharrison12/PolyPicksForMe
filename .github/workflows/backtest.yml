@@ -15,7 +15,7 @@ on:
         description: "min traders for consensus (5 = default, 4 = looser)"
         default: "5"
       mode:
-        description: "mode: normal | trader_report | persistence"
+        description: "mode: normal | trader_report | persistence | favorite_report"
         default: "normal"
       min_bets:
         description: "min bets per trader (for trader_report / persistence)"
@@ -41,6 +41,8 @@ jobs:
             FLAGS="--trader-report --min-bets ${{ github.event.inputs.min_bets }}"
           elif [ "${{ github.event.inputs.mode }}" = "persistence" ]; then
             FLAGS="--persistence --min-bets ${{ github.event.inputs.min_bets }}"
+          elif [ "${{ github.event.inputs.mode }}" = "favorite_report" ]; then
+            FLAGS="--favorite-report"
           fi
           python3 backtest.py \
             --start ${{ github.event.inputs.start }} \
