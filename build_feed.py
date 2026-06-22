@@ -34,6 +34,7 @@ def main():
 
     debug = {"cohort_count": 0, "source": None, "picks": 0, "error": None}
     picks = []
+    cohort = None
     try:
         cohort, source = get_cohort()
         debug["source"] = source
@@ -64,6 +65,15 @@ def main():
                 pc.announce(p)                    # notify only A + outcome
             seen.add(sig)
         pc.save_state(seen)
+
+    # Capture the CLEAN pre-match line for any cohort market still before kickoff.
+    # Mostly alerts fire post-kickoff, so this sidecar is the only way to record
+    # the closing line we'd need to test 'do our A-outcome alerts beat the line'.
+    try:
+        if cohort:
+            pc.capture_prematch_lines(cohort)
+    except Exception as e:
+        print("capture_prematch_lines error:", e)
 
     # Refresh peak/trough of the held-side price for still-open alerts BEFORE
     # resolving — catches the live price while the market is still open. Once a
