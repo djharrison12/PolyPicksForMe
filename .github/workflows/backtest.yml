@@ -4,7 +4,7 @@ on:
     inputs:
       start:
         description: "start date YYYY-MM-DD"
-        default: "2026-04-01"
+        default: "2026-02-01"
       end:
         description: "end date YYYY-MM-DD (blank = today)"
         default: "2026-06-01"
@@ -12,13 +12,13 @@ on:
         description: "top-N cohort by weight"
         default: "200"
       threshold:
-        description: "min traders for consensus (5 = default, 4 = looser/more signals)"
+        description: "min traders for consensus (5 = default, 4 = looser)"
         default: "5"
-      trader_report:
-        description: "trader report? (type yes to see who made the correct trades)"
-        default: "no"
+      mode:
+        description: "mode: normal | trader_report | persistence"
+        default: "normal"
       min_bets:
-        description: "min bets per trader for report (only used if trader_report=yes)"
+        description: "min bets per trader (for trader_report / persistence)"
         default: "15"
 
 permissions:
@@ -27,7 +27,7 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,8 +37,10 @@ jobs:
       - name: Run backtest
         run: |
           FLAGS=""
-          if [ "${{ github.event.inputs.trader_report }}" = "yes" ]; then
+          if [ "${{ github.event.inputs.mode }}" = "trader_report" ]; then
             FLAGS="--trader-report --min-bets ${{ github.event.inputs.min_bets }}"
+          elif [ "${{ github.event.inputs.mode }}" = "persistence" ]; then
+            FLAGS="--persistence --min-bets ${{ github.event.inputs.min_bets }}"
           fi
           python3 backtest.py \
             --start ${{ github.event.inputs.start }} \
