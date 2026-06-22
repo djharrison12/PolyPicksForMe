@@ -443,6 +443,91 @@ def persistence_test(cohort, top_n, threshold, mid_ts, start_ts, end_ts, min_bet
         print("  (STILL SHARP across a THIRD independent window = real edge-carrier.)")
 
 
+def favorite_report(signals, fav_cut=0.5):
+    """Tag every resolved bet by whether the bet was on the FAVORITE side
+    (price_at_convergence >= fav_cut), then report win-rate-vs-price for
+    favorites, sliced by grade AND archetype AND sport. The question:
+    do mixed-favorite bets BEAT THEIR PRICE, or just win because favorites win?
+
+    IMPORTANT: this is the same look-ahead-biased reconstruction as everything
+    else (~+29pts inflation), AND 'price>=0.5' is a proxy for favorite, not a
+    clean pre-match line. Read the CROSS-SPORT split as the real signal: if
+    mixed-favorite edge only shows up in chalk-heavy windows (WC group stage),
+    it's the favorite-longshot bias, not the signal.
+    """
+    res = [s for s in signals if s.get("won") is not None
+           and s.get("price_at_convergence") is not None]
+
+    def line(rows, label):
+        n = len(rows)
+        if not n:
+            print(f"{label:38} n=  0   —")
+            return
+        w = sum(1 for r in rows if r["won"])
+        impl = sum(r["price_at_convergence"] for r in rows) / n
+        print(f"{label:38} n={n:3} win%={w/n*100:5.1f} avgpx={impl*100:5.1f} "
+              f"gap={(w/n-impl)*100:+6.1f}")
+
+    def sport_of(s):
+        sp = s.get("sport")
+        if sp and sp != "other":
+            return sp
+        # infer from slug: NBA/NHL/etc vs soccer (fifwc)
+        slug = s.get("slug", "")
+        if slug.startswith("fifwc") or "soccer" in slug:
+            return "soccer"
+        if slug.startswith(("nba", "nhl", "mlb", "ncaa")):
+            return "nba/us"
+        return "other"
+
+    fav = [s for s in res if s["price_at_convergence"] >= fav_cut]
+    dog = [s for s in res if s["price_at_convergence"] < fav_cut]
+
+    print(f"\n=== FAVORITE REPORT (favorite = price >= {fav_cut}) ===")
+    print("KEY QUESTION: does betting the favorite BEAT the price, or just win "
+          "because favorites win?")
+    print("(look-ahead biased ~+29pts; favorite='price proxy' not clean line; "
+          "read CROSS-SPORT split as the real test)\n")
+    line(res, "ALL resolved bets")
+    line(fav, "ALL on favorite")
+    line(dog, "ALL on underdog")
+
+    print("\n--- favorites by GRADE ---")
+    for g in ["A", "B", "C", "D", "F"]:
+        line([s for s in fav if s["grade"] == g], f"  {g} on favorite")
+
+    print("\n--- favorites by ARCHETYPE ---")
+    for a in ["outcome", "mixed", "line-trade", "unknown"]:
+        line([s for s in fav if s["archetype"] == a], f"  {a} on favorite")
+
+    print("\n--- the SLICE you asked about: A-mixed on favorite ---")
+    line([s for s in fav if s["grade"] == "A" and s["archetype"] == "mixed"],
+         "  A+mixed on favorite")
+    line([s for s in res if s["grade"] == "A" and s["archetype"] == "mixed"
+          and s["price_at_convergence"] < fav_cut],
+         "  A+mixed on UNDERDOG (for contrast)")
+    print("  ^ tiny sample expected — read as anecdote, not evidence.")
+
+    print("\n--- MIXED-on-favorite, split by SPORT (THE REAL TEST) ---")
+    print("    if mixed-fav edge only exists in soccer (WC chalk), it's the "
+          "favorite bias, not the signal:")
+    mixed_fav = [s for s in fav if s["archetype"] == "mixed"]
+    by_sport = defaultdict(list)
+    for s in mixed_fav:
+        by_sport[sport_of(s)].append(s)
+    for sp in sorted(by_sport, key=lambda k: -len(by_sport[k])):
+        line(by_sport[sp], f"  mixed-fav [{sp}]")
+    # and all-grades favorite by sport, for the broad chalk check
+    print("\n--- ALL-grade favorites, split by SPORT (chalk-window check) ---")
+    by_sport_all = defaultdict(list)
+    for s in fav:
+        by_sport_all[sport_of(s)].append(s)
+    for sp in sorted(by_sport_all, key=lambda k: -len(by_sport_all[k])):
+        line(by_sport_all[sp], f"  all-fav [{sp}]")
+    print("\nIf F-grade favorites win at ~the same rate as A/B-grade favorites,")
+    print("the GRADE is doing nothing — it's pure favorite effect (chalk window).")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", required=True,
@@ -462,6 +547,10 @@ def main():
     ap.add_argument("--persistence", action="store_true",
                     help="split the date range in half and test whether the same "
                          "traders stay good in BOTH halves (the real edge test)")
+    ap.add_argument("--favorite-report", action="store_true",
+                    help="tag bets by favorite (price>=0.5) and report win-vs-price "
+                         "by grade/archetype/sport; answers 'does mixed-favorite beat "
+                         "the price or just ride chalk?' then exit")
     ap.add_argument("--peak", action="store_true",
                     help="also pull coarse historical peak/trough price per signal "
                          "(WARNING: closed markets only give >=12h granularity, so "
@@ -525,6 +614,10 @@ def main():
     # Per-trader edge report: who actually made the correct trades?
     if args.trader_report:
         trader_report(signals, res, cohort, min_bets=args.min_bets)
+        return
+
+    if args.favorite_report:
+        favorite_report(signals)
         return
 
     # LUCK/MOMENTUM FACTOR (leakage-safe): does hot-backed consensus win more?
