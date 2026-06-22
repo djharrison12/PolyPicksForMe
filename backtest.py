@@ -269,6 +269,25 @@ def enrich_peak(signals):
             time.sleep(0.3)
 
 
+def tally_traders(signals):
+    """Tally per-wallet record across resolved signals. Returns
+    {wallet: {bets, wins, price_sum}}. Shared by the single-window report and the
+    two-window persistence test."""
+    tally = defaultdict(lambda: {"bets": 0, "wins": 0, "price_sum": 0.0})
+    for s in signals:
+        if s.get("won") is None:
+            continue
+        price = s.get("price_at_convergence")
+        if price is None:
+            continue
+        for wallet in s.get("_holders", {}):
+            t = tally[wallet]
+            t["bets"] += 1
+            t["wins"] += 1 if s["won"] else 0
+            t["price_sum"] += price
+    return tally
+
+
 def trader_report(signals, res, cohort, min_bets=15):
     """Per-trader edge report: for every wallet, across all the consensus bets it
     appeared in (_holders), tally win/loss and the gap over the price it bet at.
@@ -287,18 +306,7 @@ def trader_report(signals, res, cohort, min_bets=15):
     wt_of = {w: c.get("weight") for w, c in cohort.items()}
 
     # tally per wallet across every signal it backed
-    tally = defaultdict(lambda: {"bets": 0, "wins": 0, "price_sum": 0.0})
-    for s in signals:
-        if s.get("won") is None:
-            continue   # unresolved — skip
-        price = s.get("price_at_convergence")
-        if price is None:
-            continue
-        for wallet in s.get("_holders", {}):
-            t = tally[wallet]
-            t["bets"] += 1
-            t["wins"] += 1 if s["won"] else 0
-            t["price_sum"] += price
+    tally = tally_traders(signals)
 
     rows = []
     for wallet, t in tally.items():
@@ -351,6 +359,77 @@ def trader_report(signals, res, cohort, min_bets=15):
     return rows
 
 
+def persistence_test(cohort, top_n, threshold, mid_ts, start_ts, end_ts, min_bets=12):
+    """Run the trader tally on TWO non-overlapping windows (split at mid_ts) and
+    show whether the same traders stay positive in both. This is the ONLY test
+    that separates real edge-carriers from within-window leaderboard luck: a
+    trader good in one window AND the other is real; one who reshuffles is noise.
+    """
+    def window(a, b):
+        sigs, _ = reconstruct_consensus(cohort, a, b, top_n, threshold)
+        res = fetch_resolution(sorted({s["cond"] for s in sigs}))
+        for s in sigs:
+            r = res.get(s["cond"])
+            if not r:
+                s["won"] = None; continue
+            won = r["by_token"].get(str(s["asset"]))
+            if won is None:
+                won = r["by_outcome"].get(str(s["outcome"]).strip().lower())
+            s["won"] = won
+        return tally_traders(sigs)
+
+    print("\n--- window 1 ---")
+    t1 = window(start_ts, mid_ts)
+    print("--- window 2 ---")
+    t2 = window(mid_ts, end_ts)
+
+    name_of = {w: c.get("name", w[:8]) for w, c in cohort.items()}
+
+    def gap(t, w):
+        d = t.get(w)
+        if not d or d["bets"] < min_bets:
+            return None
+        return (d["wins"] / d["bets"] - d["price_sum"] / d["bets"]) * 100, d["bets"]
+
+    # traders with enough bets in BOTH windows
+    both = []
+    for w in set(t1) | set(t2):
+        g1, g2 = gap(t1, w), gap(t2, w)
+        if g1 and g2:
+            both.append((name_of.get(w, w[:8]), g1[1], g1[0], g2[1], g2[0]))
+    both.sort(key=lambda r: r[2], reverse=True)
+
+    print(f"\n=== PERSISTENCE: traders with >= {min_bets} bets in BOTH windows ===")
+    print("(real edge = positive gap in BOTH columns; noise = good in one, bad in other.)")
+    print(f"{'trader':<22}{'w1_bets':>8}{'w1_gap':>9}{'w2_bets':>8}{'w2_gap':>9}{'  verdict'}")
+    if not both:
+        print(f"  (no trader has >= {min_bets} bets in both windows — widen or lower --min-bets)")
+        return
+    persist_pos = persist_flip = 0
+    g1s, g2s = [], []
+    for name, b1, gg1, b2, gg2 in both:
+        if gg1 > 0 and gg2 > 0:
+            verdict = "  ✓ both +"; persist_pos += 1
+        elif gg1 < 0 and gg2 < 0:
+            verdict = "  ✗ both -"
+        else:
+            verdict = "  ~ flipped"; persist_flip += 1
+        g1s.append(gg1); g2s.append(gg2)
+        print(f"{name[:21]:<22}{b1:>8}{gg1:>+9.1f}{b2:>8}{gg2:>+9.1f}{verdict}")
+
+    # correlation of gap across the two windows — the single summary number
+    n = len(g1s)
+    if n >= 4:
+        mx = sum(g1s)/n; my = sum(g2s)/n
+        num = sum((x-mx)*(y-my) for x,y in zip(g1s,g2s))
+        dx = (sum((x-mx)**2 for x in g1s))**0.5; dy = (sum((y-my)**2 for y in g2s))**0.5
+        if dx and dy:
+            print(f"\ncorrelation(window1 gap, window2 gap) = {num/(dx*dy):+.3f}  (n={n} traders)")
+            print("  >0.3 : trader edge PERSISTS across windows — real, build a cohort from the ✓ names.")
+            print("  ~0   : trader edge does NOT persist — the leaderboard is within-window luck.")
+            print(f"  ({persist_pos} stayed positive in both, {persist_flip} flipped sign.)")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", required=True,
@@ -367,6 +446,9 @@ def main():
     ap.add_argument("--min-bets", type=int, default=15,
                     help="min resolved consensus bets for a trader to appear in "
                          "the report (default 15; guards against small-sample flukes)")
+    ap.add_argument("--persistence", action="store_true",
+                    help="split the date range in half and test whether the same "
+                         "traders stay good in BOTH halves (the real edge test)")
     ap.add_argument("--peak", action="store_true",
                     help="also pull coarse historical peak/trough price per signal "
                          "(WARNING: closed markets only give >=12h granularity, so "
@@ -383,6 +465,18 @@ def main():
     cohort_file = json.loads(Path(args.traders).read_text())
     cohort = {t["wallet"]: t for t in cohort_file["traders"]}
     print(f"cohort loaded: {len(cohort)} traders; using top {args.top} by weight")
+
+    # Persistence test: split the range in half, check if traders stay good in both.
+    if args.persistence:
+        mid_ts = (start_ts + end_ts) // 2
+        from datetime import datetime as _dt, timezone as _tz
+        mid_str = _dt.fromtimestamp(mid_ts, _tz.utc).strftime("%Y-%m-%d")
+        print(f"persistence test: splitting at {mid_str} "
+              f"(window1: {args.start}->{mid_str}, window2: {mid_str}->{args.end or 'today'})")
+        persistence_test(cohort, args.top, args.threshold, mid_ts,
+                         start_ts, end_ts, min_bets=max(8, args.min_bets - 3))
+        return
+
     print(f"reconstructing consensus over {window_desc} "
           f"(threshold={args.threshold})…\n")
 
