@@ -269,6 +269,88 @@ def enrich_peak(signals):
             time.sleep(0.3)
 
 
+def trader_report(signals, res, cohort, min_bets=15):
+    """Per-trader edge report: for every wallet, across all the consensus bets it
+    appeared in (_holders), tally win/loss and the gap over the price it bet at.
+
+    This is the question 'who actually made the correct trades?' answered from the
+    reconstructed history. Guards against the usual traps:
+      - min_bets filter kills small-sample flukes (a 3-for-3 trader is noise)
+      - reports gap-over-price, not raw win% (a favorite-bettor wins a lot with
+        zero edge; the gap strips that out)
+      - shows n prominently so you can't fool yourself on a hot streak
+      - joins to the scorer's weight, so you can see whether the WEIGHT (which the
+        grade is built on) actually predicts consensus accuracy.
+    """
+    # wallet -> name + weight from the cohort/traders.json
+    name_of = {w: c.get("name", w[:8]) for w, c in cohort.items()}
+    wt_of = {w: c.get("weight") for w, c in cohort.items()}
+
+    # tally per wallet across every signal it backed
+    tally = defaultdict(lambda: {"bets": 0, "wins": 0, "price_sum": 0.0})
+    for s in signals:
+        if s.get("won") is None:
+            continue   # unresolved — skip
+        price = s.get("price_at_convergence")
+        if price is None:
+            continue
+        for wallet in s.get("_holders", {}):
+            t = tally[wallet]
+            t["bets"] += 1
+            t["wins"] += 1 if s["won"] else 0
+            t["price_sum"] += price
+
+    rows = []
+    for wallet, t in tally.items():
+        n = t["bets"]
+        if n < min_bets:
+            continue
+        win = t["wins"] / n
+        avg_price = t["price_sum"] / n
+        gap = (win - avg_price) * 100
+        rows.append({
+            "name": name_of.get(wallet, wallet[:8]),
+            "wallet": wallet,
+            "bets": n, "win": win * 100,
+            "avg_price": avg_price * 100, "gap": gap,
+            "weight": wt_of.get(wallet),
+        })
+
+    rows.sort(key=lambda r: r["gap"], reverse=True)
+
+    print(f"\n=== PER-TRADER EDGE REPORT (min {min_bets} consensus bets, "
+          f"sorted by gap over price) ===")
+    print("(gap = win% minus the avg price they bet at; +gap = beat the market.)")
+    print("(weight = the scorer's quality score the GRADE is built on.)")
+    print(f"{'trader':<22}{'bets':>6}{'win%':>8}{'avg_px':>9}{'gap':>8}{'weight':>9}")
+    if not rows:
+        print(f"  (no trader has >= {min_bets} resolved consensus bets in this "
+              f"window — widen the window)")
+        return rows
+    for r in rows:
+        wt = f"{r['weight']:.3f}" if r["weight"] is not None else "—"
+        print(f"{r['name'][:21]:<22}{r['bets']:>6}{r['win']:>7.1f}"
+              f"{r['avg_price']:>9.1f}{r['gap']:>+8.1f}{wt:>9}")
+
+    # Does the scorer's weight actually predict consensus edge? Correlate
+    # weight vs gap across qualifying traders.
+    paired = [(r["weight"], r["gap"]) for r in rows if r["weight"] is not None]
+    if len(paired) >= 5:
+        xs = [p[0] for p in paired]; ys = [p[1] for p in paired]
+        n = len(xs); mx = sum(xs) / n; my = sum(ys) / n
+        num = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+        dx = (sum((x - mx) ** 2 for x in xs)) ** 0.5
+        dy = (sum((y - my) ** 2 for y in ys)) ** 0.5
+        if dx and dy:
+            corr = num / (dx * dy)
+            print(f"\ncorrelation(scorer weight, actual gap) = {corr:+.3f}  "
+                  f"(n={n} traders)")
+            print("  >0.3: the weight tracks real consensus edge — grade is well-founded.")
+            print("  ~0  : weight does NOT predict consensus accuracy — grade may be "
+                  "leaning on the wrong thing.")
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", required=True,
@@ -279,6 +361,12 @@ def main():
     ap.add_argument("--threshold", type=int, default=THRESHOLD,
                     help="min distinct traders to form consensus (default 5; try 4 for more signals)")
     ap.add_argument("--traders", default="traders.json")
+    ap.add_argument("--trader-report", action="store_true",
+                    help="print a per-trader edge report (who actually made the "
+                         "correct trades), then exit")
+    ap.add_argument("--min-bets", type=int, default=15,
+                    help="min resolved consensus bets for a trader to appear in "
+                         "the report (default 15; guards against small-sample flukes)")
     ap.add_argument("--peak", action="store_true",
                     help="also pull coarse historical peak/trough price per signal "
                          "(WARNING: closed markets only give >=12h granularity, so "
@@ -326,6 +414,11 @@ def main():
             scored += 1
     print(f"scored {scored} of {len(signals)} signals "
           f"({sum(1 for s in signals if s['won'])} wins)")
+
+    # Per-trader edge report: who actually made the correct trades?
+    if args.trader_report:
+        trader_report(signals, res, cohort, min_bets=args.min_bets)
+        return
 
     # LUCK/MOMENTUM FACTOR (leakage-safe): does hot-backed consensus win more?
     compute_streaks(signals, res, trades_by_wallet)
@@ -401,4 +494,5 @@ def main():
 
 
 if __name__ == "__main__":
+    main()in__":
     main()
