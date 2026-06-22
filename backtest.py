@@ -429,6 +429,19 @@ def persistence_test(cohort, top_n, threshold, mid_ts, start_ts, end_ts, min_bet
             print("  ~0   : trader edge does NOT persist — the leaderboard is within-window luck.")
             print(f"  ({persist_pos} stayed positive in both, {persist_flip} flipped sign.)")
 
+    # Flag the standing watchlist of candidate-sharp traders explicitly, so you can
+    # see at a glance whether the names that persisted before persist AGAIN here.
+    WATCHLIST = {"damed21", "Tirdenchi", "GrizzliesSuck", "lu1zzz"}
+    hits = [(name, b1, gg1, b2, gg2) for (name, b1, gg1, b2, gg2) in both
+            if name in WATCHLIST]
+    if hits:
+        print("\n--- WATCHLIST (candidate sharps from prior windows) ---")
+        for name, b1, gg1, b2, gg2 in hits:
+            tag = "STILL SHARP" if (gg1 > 5 and gg2 > 5) else \
+                  "faded" if (gg1 > 0 and gg2 > 0) else "GONE"
+            print(f"  {name:<16} w1 {gg1:+.1f} ({b1})  w2 {gg2:+.1f} ({b2})   -> {tag}")
+        print("  (STILL SHARP across a THIRD independent window = real edge-carrier.)")
+
 
 def main():
     ap = argparse.ArgumentParser()
