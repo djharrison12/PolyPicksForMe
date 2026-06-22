@@ -575,6 +575,91 @@ def update_peaks(path=ALERTS_LOG, verbose=True):
                 f.write(json.dumps(r) + "\n")
 
 
+PREMATCH_LOG = "prematch_lines.jsonl"   # sidecar: kickoff price per token, once
+
+def capture_prematch_lines(cohort, path=PREMATCH_LOG):
+    """Record the CLEAN pre-match line: for every market the cohort is active in
+    whose gameStartTime is still in the FUTURE, store the current per-token
+    midpoint exactly once. This is the price the market set BEFORE kickoff — the
+    sharpest public probability estimate, and the line a real edge must BEAT.
+
+    Why a sidecar and not a column on the alert row: alerts mostly fire AFTER
+    kickoff (in-game consensus), so price_at_alert is already a live price tainted
+    by game state. To test 'do our alerts beat the closing line' we need the line
+    captured BEFORE the game — which only this pre-kickoff sweep can do. Later,
+    join alerts to this file on (conditionId, asset).
+
+    Captured once per token (first pre-kickoff sighting wins — closest to the
+    true close we can get without millisecond timing). Idempotent and cheap.
+    """
+    import time as _t
+    p = Path(__file__).with_name(path)
+    seen = set()
+    if p.exists():
+        for l in p.read_text().splitlines():
+            if l.strip():
+                try:
+                    d = json.loads(l)
+                    seen.add((d.get("conditionId"), d.get("asset")))
+                except json.JSONDecodeError:
+                    continue
+
+    # Gather the markets the cohort currently holds, with their gameStartTime.
+    cond_to_assets = defaultdict(set)
+    for wallet, info in cohort.items():
+        try:
+            positions = get_positions(wallet)
+        except requests.RequestException:
+            continue
+        for pos in positions:
+            cid, asset = pos.get("conditionId"), pos.get("asset")
+            if cid and asset:
+                cond_to_assets[cid].add(asset)
+        time.sleep(PER_CALL_DELAY)
+
+    if not cond_to_assets:
+        return
+    status = markets_status(list(cond_to_assets))
+    now = int(_t.time())
+
+    def _kickoff_ts(game):
+        if not game:
+            return None
+        try:
+            g = str(game).replace("Z", "+00:00")
+            return int(datetime.fromisoformat(g).timestamp())
+        except (ValueError, TypeError):
+            return None
+
+    wrote = 0
+    with p.open("a") as f:
+        for cid, assets in cond_to_assets.items():
+            st = status.get(cid) or {}
+            ko = _kickoff_ts(st.get("game"))
+            # Only capture if we KNOW kickoff is still in the future (clean line).
+            if ko is None or ko <= now:
+                continue
+            for asset in assets:
+                if (cid, asset) in seen:
+                    continue
+                price = token_price(asset)
+                if price is None:
+                    continue
+                rec = {
+                    "ts": now,
+                    "conditionId": cid,
+                    "asset": asset,
+                    "kickoff_ts": ko,
+                    "mins_to_kickoff": round((ko - now) / 60, 1),
+                    "prematch_line": round(price, 4),
+                }
+                f.write(json.dumps(rec) + "\n")
+                seen.add((cid, asset))
+                wrote += 1
+                time.sleep(PER_CALL_DELAY)
+    print(f"  capture_prematch_lines: {wrote} new pre-kickoff lines logged")
+
+
 def resolve_pending(path=ALERTS_LOG):
     """Check unresolved logged alerts; if their market has settled, mark won/lost.
     Uses CLOB /markets/{conditionId} (Gamma's condition_ids query returns empty
