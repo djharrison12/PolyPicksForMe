@@ -79,7 +79,11 @@ TRADER_WEIGHT_OVERRIDES = {
     "wigglew": 0.85,         # +11.9/+12.0, unusually stable across windows
     "lyj777": 0.8,           # +10.4/+14.6, decent samples
     "unknowngambler": 0.8,   # +20.7/+10.2, held across both
-    "Mk756": 0.7,            # +9.0/+4.0, positive both windows
+    # Mk756 REMOVED: forward bets showed low hold_rate + sellable mid-game spike
+    # (entry ~0.325, peaked 0.405) = line-trader whose edge is in the EXIT. A
+    # hold-to-resolution alert system can't replicate that exit, so his picks
+    # resolve to losses for us even when he personally profits. Mechanism
+    # mismatch, not just a bad week — removed on that basis.
 }
 # Boost is only applied to these names; everyone else keeps their scorer weight.
 
@@ -313,6 +317,80 @@ def _days_until(iso_str):
         return None
 
 
+def _is_margin_market(slug):
+    """Spread / handicap / total markets — bets here can be 'line trades' (bought
+    to sell on a swing) rather than holds. slug carries the market type."""
+    s = (slug or "").lower()
+    return any(k in s for k in ("spread", "handicap", "-total-", "o-u", "-ou-",
+                                "team-total", "first-half", "halftime"))
+
+
+LINE_TRADE_ENTRY_FLOOR = 0.20   # a margin bet entering below this, late, is a punt/line-trade
+
+def _looks_like_line_trade(slug, entry, price):
+    """Outcome-blind structural test (NO use of the result):
+    a MARGIN market entered at a deep discount (< floor) is a bet on a big swing
+    that, in practice, is a line-trade or punt rather than a hold-to-resolution
+    conviction bet. England -1.5 @ 0.175 late in a 0-0 game is the canonical case.
+    Returns True if the bet's STRUCTURE (market type + entry price) matches the
+    line-trade signature, regardless of how it resolved."""
+    if not _is_margin_market(slug):
+        return False
+    p = price if price is not None else entry
+    try:
+        return p is not None and float(p) < LINE_TRADE_ENTRY_FLOOR
+    except (TypeError, ValueError):
+        return False
+
+
+def _apply_same_game_contradiction(out):
+    """Detect logically-opposed high-grade bets in the SAME game and downgrade the
+    LATER, weaker one. Two A/B bets that can't both be true (e.g. 'England NO win'
+    AND 'England -1.5' to win by 2) reveal that at least one is not a real
+    conviction hold. Outcome-blind: uses only entry order + market direction, not
+    the result.
+
+    Conservative scope (start narrow): same conditionId game, a moneyline-NO-win
+    bet vs a same-team positive-spread bet = contradiction (can't fade a team AND
+    back them to cover a big spread). The EARLIER, higher-weight bet is kept; the
+    later contradicting one is tagged + suppressed from outcome status.
+    """
+    def _game_key(slug):
+        # Strip the market-type suffix to get a shared game id. Spread and
+        # moneyline markets have different conditionIds but share the game slug
+        # prefix, e.g. 'fifwc-eng-gha-2026-06-23-*'. Take the date-anchored stem.
+        s = (slug or "").lower()
+        import re
+        m = re.match(r"(.+?-\d{4}-\d{2}-\d{2})", s)
+        return m.group(1) if m else s
+
+    by_game = defaultdict(list)
+    for b in out:
+        by_game[_game_key(b.get("slug"))].append(b)
+
+    for cid, bets in by_game.items():
+        # Find moneyline NO-win fades (betting a team WON'T win) and same-game
+        # spread bets backing that team to cover. Opposite directional theses.
+        # A 'fade' = a NO-side bet on a team's moneyline (betting they won't win).
+        # Moneyline markets are the non-margin ones; the NO side is the fade.
+        fades = [b for b in bets if b.get("grade") in ("A", "B")
+                 and not _is_margin_market(b.get("slug"))
+                 and (b.get("outcome") or "").lower() == "no"]
+        spreads = [b for b in bets if _is_margin_market(b.get("slug"))
+                   and b.get("grade") in ("A", "B")]
+        if not (fades and spreads):
+            continue
+        # The fade says "this team underperforms"; a spread backing the same team
+        # to cover by a margin is the opposite. Downgrade whichever is LATER and
+        # has the line-trade structure (spreads almost always the culprit).
+        best_fade_ts = min(f.get("ts", 0) or 0 for f in fades) if fades else 0
+        for s in spreads:
+            if (s.get("ts", 0) or 0) >= best_fade_ts:
+                s["archetype"] = "line-trade"
+                s["contradicts_fade"] = True
+                s["line_trade_reason"] = "same-game contradiction w/ earlier fade"
+
+
 def find_consensus(cohort):
     by_asset = defaultdict(lambda: {"holders": set(), "meta": None,
                                     "entries": [], "weights": [], "holds": [],
@@ -395,7 +473,17 @@ def find_consensus(cohort):
             continue   # suppressed (weak line-trade)
         grade, score, arch_label = graded
 
-        out.append({**e["meta"], "asset": asset,
+        # Outcome-blind reclassification: if this is a MARGIN market entered at a
+        # deep discount, its structure is a line-trade/punt, not a hold — override
+        # the archetype so grading/notification treats it accordingly. Applied to
+        # ALL such bets (winners and losers alike), never using the result.
+        line_trade_flag = _looks_like_line_trade(
+            e["meta"].get("slug"), entry, price)
+        if line_trade_flag:
+            arch_label = "line-trade"
+
+        import time as _t
+        out.append({**e["meta"], "asset": asset, "ts": int(_t.time()),
                     "count": len(e["holders"]), "holders": sorted(e["holders"]),
                     "ask": price, "entry": entry,
                     "cohort_usd": round(e["usd"], 2),
@@ -404,7 +492,11 @@ def find_consensus(cohort):
                     "bet_weight": round(bet_weight, 3), "avg_hold": avg_hold,
                     "sharps": sorted(e["sharps"]),       # standout traders in this bet
                     "sharp_driven": bool(e["sharps"]),   # did a boosted trader help reach grade?
+                    "line_trade_struct": line_trade_flag,  # deep-discount margin bet
                     "archetype": arch_label, "grade": grade, "score": score})
+    # Cross-alert consistency: downgrade later bets that contradict an earlier
+    # same-game fade (logically-opposed convictions can't both be real holds).
+    _apply_same_game_contradiction(out)
     # Sort by grade quality (score), best first.
     out.sort(key=lambda x: x["score"], reverse=True)
     return out
@@ -514,6 +606,8 @@ def log_alert(item, path=ALERTS_LOG):
         "score": item.get("score"),
         "sharps": item.get("sharps"),             # standout traders in this bet
         "sharp_driven": item.get("sharp_driven"), # did a boosted sharp help reach grade?
+        "line_trade_struct": item.get("line_trade_struct"),  # deep-discount margin bet
+        "contradicts_fade": item.get("contradicts_fade"),    # opposed earlier same-game fade
         "peak_price": item.get("ask"),    # running max of held-side price (live)
         "trough_price": item.get("ask"),  # running min of held-side price (live)
         "resolved": None,      # filled later by resolve_pending()
