@@ -53,6 +53,22 @@ def main():
     NOTIFY_GRADES = {"A"}
     NOTIFY_ARCHETYPES = {"outcome"}
 
+    # MIN_NOTIFY_ENTRY: personal risk preference, NOT a measured edge. Added
+    # 2026-06-24 after the Croatia-NO@0.165 loss. The market is calibrated, so
+    # a sub-0.20 bet wins ~its price of the time and carries no demonstrated
+    # price-dependent edge; I simply don't want to be pinged to place longshots
+    # (of any side/type). This is a BLANKET odds floor — it suppresses the
+    # NOTIFICATION for any pick entered below the threshold, symmetric across
+    # fades, longshot YES, draws, deep totals, etc. It does NOT target fades and
+    # was NOT derived from results.
+    #
+    # IMPORTANT: this gates announce() ONLY. log_alert(p) below still records
+    # EVERY pick, so the resolved log / goalpost tally remain complete and
+    # unedited. Do not recompute the historical win-rate on the post-floor
+    # universe and cite the cleaner number — that would launder resolved bets
+    # (incl. winners like the England-NO@0.185 fade) out of the measurement.
+    MIN_NOTIFY_ENTRY = 0.20
+
     # Log every new graded pick; notify only the A-grade outcome bets.
     if picks:
         seen = pc.load_state()
@@ -61,8 +77,17 @@ def main():
             if sig in seen:
                 continue
             pc.log_alert(p)                       # log ALL picks (full catalogue)
-            if p.get("grade") in NOTIFY_GRADES and p.get("archetype") in NOTIFY_ARCHETYPES:
-                pc.announce(p)                    # notify only A + outcome
+            entry = p.get("entry")
+            below_floor = entry is not None and entry < MIN_NOTIFY_ENTRY
+            if (p.get("grade") in NOTIFY_GRADES
+                    and p.get("archetype") in NOTIFY_ARCHETYPES
+                    and not below_floor):
+                pc.announce(p)                    # notify only A + outcome, >= floor
+            elif below_floor and p.get("grade") in NOTIFY_GRADES:
+                # Visible in the run log so you can see what the floor suppressed,
+                # without it ever hitting Telegram.
+                print(f"    [floor] suppressed notify: {p.get('slug')} "
+                      f"{p.get('side')} entry={entry:.3f} grade={p.get('grade')}")
             seen.add(sig)
         pc.save_state(seen)
 
