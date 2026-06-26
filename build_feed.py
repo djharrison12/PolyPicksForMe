@@ -54,13 +54,18 @@ def main():
     NOTIFY_ARCHETYPES = {"outcome"}
 
     # MIN_NOTIFY_ENTRY: personal risk preference, NOT a measured edge. Added
-    # 2026-06-24 after the Croatia-NO@0.165 loss. The market is calibrated, so
-    # a sub-0.20 bet wins ~its price of the time and carries no demonstrated
-    # price-dependent edge; I simply don't want to be pinged to place longshots
-    # (of any side/type). This is a BLANKET odds floor — it suppresses the
-    # NOTIFICATION for any pick entered below the threshold, symmetric across
-    # fades, longshot YES, draws, deep totals, etc. It does NOT target fades and
-    # was NOT derived from results.
+    # 2026-06-24 after the Croatia-NO@0.165 loss, fixed 2026-06-25 to gate on the
+    # LIVE price. The market is calibrated, so a low-priced bet wins ~its price of
+    # the time and carries no demonstrated price-dependent edge; I simply don't
+    # want to be pinged to place longshots (of any side/type). This is a BLANKET
+    # odds floor on the NOTIFICATION, symmetric across fades, longshot YES, draws,
+    # deep totals, etc. It does NOT target fades and was NOT derived from results.
+    #
+    # GATE ON price_at_alert (the live ask = what I'd actually pay now), NOT on
+    # "entry" (the cohort's stale average buy-in). A bet can have a high cohort
+    # entry (~0.46) but a collapsed live price (~0.12) — "now cheaper than they
+    # paid". That IS a sub-0.20 bet today and should be suppressed; gating on
+    # entry let those through by mistake.
     #
     # IMPORTANT: this gates announce() ONLY. log_alert(p) below still records
     # EVERY pick, so the resolved log / goalpost tally remain complete and
@@ -77,8 +82,8 @@ def main():
             if sig in seen:
                 continue
             pc.log_alert(p)                       # log ALL picks (full catalogue)
-            entry = p.get("entry")
-            below_floor = entry is not None and entry < MIN_NOTIFY_ENTRY
+            live_price = p.get("price_at_alert")
+            below_floor = live_price is not None and live_price < MIN_NOTIFY_ENTRY
             if (p.get("grade") in NOTIFY_GRADES
                     and p.get("archetype") in NOTIFY_ARCHETYPES
                     and not below_floor):
@@ -87,7 +92,8 @@ def main():
                 # Visible in the run log so you can see what the floor suppressed,
                 # without it ever hitting Telegram.
                 print(f"    [floor] suppressed notify: {p.get('slug')} "
-                      f"{p.get('side')} entry={entry:.3f} grade={p.get('grade')}")
+                      f"{p.get('side')} live_price={live_price:.3f} "
+                      f"entry={p.get('entry')} grade={p.get('grade')}")
             seen.add(sig)
         pc.save_state(seen)
 
