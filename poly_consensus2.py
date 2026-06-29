@@ -77,8 +77,14 @@ TRADER_WEIGHT_OVERRIDES = {
     "damed21": 1.2,          # most persistent: ~+14 gap across 4 windows; alone ~= A threshold
     "0xd2b5a4": 0.85,        # +35/+29 but small samples — heavy hitter, watch magnitude
     "wigglew": 0.85,         # +11.9/+12.0, unusually stable across windows
-    "lyj777": 0.8,           # +10.4/+14.6, decent samples
-    "unknowngambler": 0.8,   # +20.7/+10.2, held across both
+    "unknowngambler": 0.8,   # +20.7/+10.2; forward log 21/24, only 1 flagged
+                             # line-trade in 24 picks — kept on that basis (2026-06-29)
+    # lyj777 REMOVED (2026-06-29): forward group-stage record was 8 picks, ALL 8
+    # spreads/totals, 3/8 won, and it was the cohort behind the England -1.5 bet
+    # already structurally flagged as a line-trade. Profile is line-trading judged
+    # blind to results (spread-heavy + losing), so the mechanism mismatch — not the
+    # win rate — is the reason. Same basis as Mk756. NOTE: this re-grades FUTURE
+    # alerts only; do NOT recompute the historical A-outcome rate on the trimmed set.
     # Mk756 REMOVED: forward bets showed low hold_rate + sellable mid-game spike
     # (entry ~0.325, peaked 0.405) = line-trader whose edge is in the EXIT. A
     # hold-to-resolution alert system can't replicate that exit, so his picks
