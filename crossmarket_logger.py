@@ -1,91 +1,184 @@
 """
-crossmarket_logger.py  —  zero-capital measurement, NOT a bettor.
+crossmarket_logger.py  —  zero-capital measurement, NOT a bettor.  (SportsGameOdds v2)
 
-Purpose: per game, snapshot three prices at a fixed lead time T0 and again at
-close, then record the result. A separate pass de-vigs and asks: does PM/Kalshi
-LEAD the soft book's closing move (tradeable signal) — and does PM ever beat the
-sharp book (the harder, more valuable question)?
+v1 answers "does the soft retail book's closing line drift toward the sharp book?"
+using only your SportsGameOdds key. Polymarket slots in later (fetch_pm), PHASE 2.
+It logs only. Never places a bet.
 
-This logs only. It never places a bet. The point is to learn which market leads
-which BEFORE any capital is at risk, the same way the A-outcome forward log works.
+STATUS: auth + fetch are wired correctly to SportsGameOdds v2. The moneyline
+field-mapping is BEST-EFFORT because soccer is 3-way and the exact oddID tokens
+need to be confirmed against a real response. Run `--probe` first, paste the
+output, and the parser gets locked to the real shape.
 
 FROZEN RULES (set once, never tune after seeing results):
-  T0_LEAD_MIN = 180        # snapshot 3h before kickoff, every game, no exceptions
-  DEVIG       = proportional (below). Pick one method and freeze it.
-  DIVERGENCE  = pm_prob - softbook_devig_prob  on the same side.
-Changing any of these after looking at outcomes is the 88%->70% mistake again.
+  T0 snapshot ~3h pre-kick, close snapshot ~10m pre-kick, every game.
+  DEVIG = proportional. Freeze it.
 """
-import json, time
+import os, json, time, urllib.request
 from pathlib import Path
 
-T0_LEAD_MIN = 180
-LOG = Path(__file__).with_name("crossmarket_log.jsonl")
+# ---------------- CONFIG ----------------
+API_KEY   = os.environ.get("ODDS_API_KEY", "")
+API_BASE  = "https://api.sportsgameodds.com/v2"
+LEAGUE_ID = "FIFA_WORLD_CUP"          # confirm via /leagues if events come back empty
+SHARP_BOOKS = ["pinnacle", "circa", "betonlineag"]
+SOFT_BOOKS  = ["draftkings", "fanduel", "betmgm", "caesars"]
+T0_LEAD_MIN, T0_WINDOW = 180, 20
+CLOSE_LEAD_MIN         = 10
+LOG = Path("crossmarket_log.jsonl")
 
 
-# ---- the reusable core: turn a book's two-sided line into a clean probability ----
-def american_to_prob(odds: float) -> float:
-    """Raw implied prob from American odds (still includes vig)."""
-    return (-odds) / ((-odds) + 100) if odds < 0 else 100 / (odds + 100)
+# ---------------- de-vig core ----------------
+def american_to_prob(o):
+    o = float(o)
+    return (-o) / ((-o) + 100) if o < 0 else 100 / (o + 100)
 
-def devig_proportional(side_a_odds: float, side_b_odds: float):
-    """Strip margin proportionally. Returns (prob_a, prob_b) summing to 1.0.
-    NOTE: proportional is the simple method; it slightly mishandles the
-    favorite-longshot bias. Fine to start. If you ever switch to Shin/power,
-    FREEZE the choice first — do not pick the method that flatters the result."""
-    ra, rb = american_to_prob(side_a_odds), american_to_prob(side_b_odds)
-    s = ra + rb
-    return ra / s, rb / s
+def devig(probs):
+    """N-way proportional de-vig. Pass {side: raw_prob}, get {side: fair_prob}."""
+    s = sum(probs.values())
+    return {k: v / s for k, v in probs.items()} if s else {}
 
 
-# ---- fetch stubs: point these at your chosen provider (SportsGameOdds / TheOddsAPI / Kalshi / your PM feed) ----
-def fetch_sharp(game_id):      # Pinnacle two-sided line  -> (side_a_odds, side_b_odds)
-    raise NotImplementedError("wire to provider; return american odds for both sides")
-def fetch_soft(game_id):       # DraftKings/FanDuel two-sided line -> (side_a_odds, side_b_odds)
-    raise NotImplementedError
-def fetch_pm(game_id):         # Polymarket price for side_a (already a probability 0..1)
-    raise NotImplementedError("you already have this: CLOB midpoint")
-def fetch_kalshi(game_id):     # Kalshi last/mid for side_a (probability 0..1) or None
+# ---------------- fetch (SportsGameOdds v2) ----------------
+def api_get(path):
+    req = urllib.request.Request(API_BASE + path, headers={"x-api-key": API_KEY})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.load(r)
+
+def fetch_events():
+    # finalized=false = upcoming; oddsAvailable=true = only games that have odds
+    return api_get(f"/events?leagueID={LEAGUE_ID}&finalized=false&oddsAvailable=true").get("data", [])
+
+
+# ---------------- BEST-EFFORT parsing (probe confirms these paths) ----------------
+def event_start(ev):
+    for path in (("status", "startsAt"), ("status", "scheduled"), ("scheduled",), ("startTime",)):
+        cur = ev
+        for k in path:
+            cur = cur.get(k) if isinstance(cur, dict) else None
+        if cur:
+            return cur
     return None
-def upcoming_games():          # list of game_ids kicking off ~T0_LEAD_MIN from now
-    raise NotImplementedError
+
+def event_teams(ev):
+    t = ev.get("teams", {})
+    def nm(side):
+        s = t.get(side, {})
+        return (s.get("names", {}) or {}).get("long") or s.get("name") or side
+    return nm("home"), nm("away")
+
+def moneyline_probs(ev):
+    """Return {bookmaker: fair home-win prob} from the full-game moneyline (2- or 3-way)."""
+    # collect raw american odds per bookmaker per side, for moneyline full-game odds only
+    per_book = {}   # book -> {side: american}
+    for oddID, odd in (ev.get("odds") or {}).items():
+        parts = oddID.split("-")
+        if "ml" not in parts:                      # moneyline only
+            continue
+        if not any(p in parts for p in ("game", "reg", "match", "full")):
+            continue
+        side = next((p for p in parts if p in ("home", "away", "draw")), None)
+        if not side:
+            continue
+        for bk, bo in (odd.get("byBookmaker") or {}).items():
+            if not bo.get("available", True) or bo.get("odds") in (None, ""):
+                continue
+            per_book.setdefault(bk, {})[side] = bo["odds"]
+    out = {}
+    for bk, sides in per_book.items():
+        if "home" not in sides or "away" not in sides:
+            continue
+        raw = {s: american_to_prob(o) for s, o in sides.items()}
+        out[bk] = round(devig(raw)["home"], 4)
+    return out
+
+def pick(books, priority):
+    return next((k for k in priority if k in books), None)
 
 
-def snapshot(game_id, phase):
-    """phase in {'t0','close'}. Captures all three prices + de-vigged book probs."""
-    sa_sharp, sb_sharp = fetch_sharp(game_id)
-    sa_soft,  sb_soft  = fetch_soft(game_id)
-    sharp_a, _ = devig_proportional(sa_sharp, sb_sharp)
-    soft_a,  _ = devig_proportional(sa_soft,  sb_soft)
-    row = {
-        "ts": int(time.time()), "game_id": game_id, "phase": phase,
-        "sharp_devig_a": round(sharp_a, 4),     # Pinnacle truth-anchor
-        "soft_devig_a":  round(soft_a, 4),      # retail book = divergence target
-        "pm_a":          fetch_pm(game_id),     # prediction market
-        "kalshi_a":      fetch_kalshi(game_id),
-        "result_a": None,                       # filled at settlement: 1/0
-    }
-    with LOG.open("a") as f:
-        f.write(json.dumps(row) + "\n")
-    return row
+# ---------------- PHASE 2 stub ----------------
+def fetch_pm(ev):
+    return None   # paste your poly_consensus2.py CLOB-midpoint call here later
 
 
-# ---- analysis (run later, on the accumulated log) ----
-def analyze():
-    """Pair each game's t0 and close rows; compute the two tests.
-    PRIMARY (closing-line value, fast): regress (soft_close - soft_t0) on
-      D = pm_t0 - soft_t0.  Positive slope => PM led the soft book = tradeable.
-    SECONDARY (outcomes, slow): bucket games by D, check realized result_a vs soft_t0.
-    BONUS (the hard one): does pm_t0 ever beat sharp_t0 at predicting result? If
-      not, PM is never sharper than Pinnacle and the only edge is vs soft books."""
+# ---------------- snapshot logic ----------------
+def already_logged(gid, phase, rows):
+    return any(r["game_id"] == gid and r["phase"] == phase for r in rows)
+
+def due_phase(commence_ts, now):
+    m = (commence_ts - now) / 60
+    if abs(m - T0_LEAD_MIN) <= T0_WINDOW / 2: return "t0"
+    if 0 < m <= CLOSE_LEAD_MIN:               return "close"
+    return None
+
+def parse_ts(s):
+    for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ"):
+        try: return time.mktime(time.strptime(s, fmt))
+        except (ValueError, TypeError): pass
+    return None
+
+def run():
+    if not API_KEY:
+        print("no ODDS_API_KEY in env — is the secret set and named exactly ODDS_API_KEY?"); return
     rows = [json.loads(l) for l in LOG.read_text().splitlines()] if LOG.exists() else []
-    games = {}
-    for r in rows:
-        games.setdefault(r["game_id"], {})[r["phase"]] = r
-    paired = [g for g in games.values() if "t0" in g and "close" in g and g["close"].get("result_a") is not None]
-    print(f"paired+settled games: {len(paired)}  (need ~50+ before reading anything; this is forward, unfitted)")
-    # (left as a stub: compute D, the CLV regression, and the D-buckets here once data exists)
-    return paired
+    now, events = time.time(), fetch_events()
+    print(f"fetched {len(events)} upcoming events")
+    written = 0
+    for ev in events:
+        gid = ev.get("eventID")
+        commence = parse_ts(event_start(ev))
+        if commence is None: continue
+        phase = due_phase(commence, now)
+        if not phase or already_logged(gid, phase, rows): continue
+        probs = moneyline_probs(ev)
+        sharp_k, soft_k = pick(probs, SHARP_BOOKS), pick(probs, SOFT_BOOKS)
+        home, away = event_teams(ev)
+        row = {"ts": int(now), "game_id": gid, "phase": phase, "commence": event_start(ev),
+               "home": home, "away": away,
+               "sharp_book": sharp_k, "sharp_prob": probs.get(sharp_k),
+               "soft_book": soft_k,   "soft_prob": probs.get(soft_k),
+               "pm_prob": fetch_pm(ev), "all_books": probs}
+        with LOG.open("a") as f: f.write(json.dumps(row) + "\n")
+        written += 1
+        print(f"  logged {phase}: {home} vs {away} sharp={sharp_k}={row['sharp_prob']} soft={soft_k}={row['soft_prob']}")
+    print(f"wrote {written} rows")
+
+
+# ---------------- probe: dump one real event so we can lock the parser ----------------
+def probe():
+    if not API_KEY: print("no ODDS_API_KEY in env"); return
+    events = fetch_events()
+    print(f"got {len(events)} events")
+    if not events: print("EMPTY — check LEAGUE_ID against /leagues"); return
+    ev = events[0]
+    print("top-level keys:", list(ev.keys()))
+    print("teams block:", json.dumps(ev.get("teams"), indent=2)[:600])
+    print("start guesses:", event_start(ev))
+    odds = ev.get("odds") or {}
+    print(f"odds count: {len(odds)}")
+    ml = [k for k in odds if "ml" in k.split("-")][:6]
+    print("sample moneyline-ish oddIDs:", ml)
+    if ml:
+        print("one moneyline odd:", json.dumps(odds[ml[0]], indent=2)[:600])
+
+
+# ---------------- analysis ----------------
+def analyze():
+    rows = [json.loads(l) for l in LOG.read_text().splitlines()] if LOG.exists() else []
+    by = {}
+    for r in rows: by.setdefault(r["game_id"], {})[r["phase"]] = r
+    pairs = [g for g in by.values() if "t0" in g and "close" in g
+             and g["t0"].get("sharp_prob") and g["t0"].get("soft_prob") and g["close"].get("soft_prob")]
+    print(f"paired games with sharp+soft: {len(pairs)}  (need ~50+, forward, unfitted)")
+    if pairs:
+        toward = sum(1 for g in pairs
+                     if (g["t0"]["sharp_prob"]-g["t0"]["soft_prob"])*(g["close"]["soft_prob"]-g["t0"]["soft_prob"]) > 0)
+        print(f"  soft closed toward sharp in {toward}/{len(pairs)} = {100*toward/len(pairs):.0f}% (>50% = soft lags sharp)")
+    return pairs
 
 
 if __name__ == "__main__":
-    analyze()
+    import sys
+    if   "--probe"   in sys.argv: probe()
+    elif "--analyze" in sys.argv: analyze()
+    else: run()
