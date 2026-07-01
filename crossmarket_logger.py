@@ -41,7 +41,15 @@ def devig(probs):
 
 # ---------------- fetch (SportsGameOdds v2) ----------------
 def api_get(path):
-    req = urllib.request.Request(API_BASE + path, headers={"x-api-key": API_KEY})
+    headers = {
+        "x-api-key": API_KEY,
+        # urllib's default UA ('Python-urllib/x') trips Cloudflare error 1010.
+        # A browser-like UA gets past the edge block.
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+    }
+    req = urllib.request.Request(API_BASE + path, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.load(r)
