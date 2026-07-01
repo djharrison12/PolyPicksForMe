@@ -163,12 +163,25 @@ def run():
 
 
 # ---------------- probe: dump one real event so we can lock the parser ----------------
+def list_leagues():
+    data = api_get("/leagues")
+    leagues = (data or {}).get("data", [])
+    print(f"--- {len(leagues)} valid league IDs (scan for the one you want) ---")
+    for lg in leagues:
+        lid   = lg.get("leagueID") or lg.get("id")
+        sport = lg.get("sportID", "")
+        name  = lg.get("name") or (lg.get("names", {}) or {}).get("long", "")
+        print(f"  {lid:24} {sport:12} {name}")
+
 def probe():
     if not API_KEY: print("no ODDS_API_KEY in env"); return
     print(f"key loaded: length {len(API_KEY)}, starts '{API_KEY[:4]}…'   base {API_BASE}")
     events = fetch_events()
     print(f"got {len(events)} events")
-    if not events: print("EMPTY — check LEAGUE_ID against /leagues"); return
+    if not events:
+        print("no events for this LEAGUE_ID — here are the valid IDs:")
+        list_leagues()
+        return
     ev = events[0]
     print("top-level keys:", list(ev.keys()))
     print("teams block:", json.dumps(ev.get("teams"), indent=2)[:600])
