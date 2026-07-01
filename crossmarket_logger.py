@@ -14,11 +14,11 @@ FROZEN RULES (set once, never tune after seeing results):
   T0 snapshot ~3h pre-kick, close snapshot ~10m pre-kick, every game.
   DEVIG = proportional. Freeze it.
 """
-import os, json, time, urllib.request
+import os, json, time, urllib.request, urllib.error
 from pathlib import Path
 
 # ---------------- CONFIG ----------------
-API_KEY   = os.environ.get("ODDS_API_KEY", "")
+API_KEY   = os.environ.get("ODDS_API_KEY", "").strip()   # strip stray newline/space from the secret
 API_BASE  = "https://api.sportsgameodds.com/v2"
 LEAGUE_ID = "FIFA_WORLD_CUP"          # confirm via /leagues if events come back empty
 SHARP_BOOKS = ["pinnacle", "circa", "betonlineag"]
@@ -42,12 +42,22 @@ def devig(probs):
 # ---------------- fetch (SportsGameOdds v2) ----------------
 def api_get(path):
     req = urllib.request.Request(API_BASE + path, headers={"x-api-key": API_KEY})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.load(r)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace")[:800]
+        print(f"--- HTTP {e.code} from {path} ---")
+        print("SGO says:", body)          # <-- paste THIS line back to lock the fix
+        return None
+    except Exception as e:
+        print("request failed:", repr(e))
+        return None
 
 def fetch_events():
     # finalized=false = upcoming; oddsAvailable=true = only games that have odds
-    return api_get(f"/events?leagueID={LEAGUE_ID}&finalized=false&oddsAvailable=true").get("data", [])
+    data = api_get(f"/events?leagueID={LEAGUE_ID}&finalized=false&oddsAvailable=true")
+    return (data or {}).get("data", [])
 
 
 # ---------------- BEST-EFFORT parsing (probe confirms these paths) ----------------
@@ -147,6 +157,7 @@ def run():
 # ---------------- probe: dump one real event so we can lock the parser ----------------
 def probe():
     if not API_KEY: print("no ODDS_API_KEY in env"); return
+    print(f"key loaded: length {len(API_KEY)}, starts '{API_KEY[:4]}…'   base {API_BASE}")
     events = fetch_events()
     print(f"got {len(events)} events")
     if not events: print("EMPTY — check LEAGUE_ID against /leagues"); return
