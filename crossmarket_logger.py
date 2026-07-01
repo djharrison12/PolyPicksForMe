@@ -20,7 +20,7 @@ from pathlib import Path
 # ---------------- CONFIG ----------------
 API_KEY   = os.environ.get("ODDS_API_KEY", "").strip()   # strip stray newline/space from the secret
 API_BASE  = "https://api.sportsgameodds.com/v2"
-LEAGUE_ID = "FIFA_WORLD_CUP"          # confirm via /leagues if events come back empty
+LEAGUE_ID = "MLB"                     # in-season, ~15 games/day through Sept — best runway on the free tier
 SHARP_BOOKS = ["pinnacle", "circa", "betonlineag"]
 SOFT_BOOKS  = ["draftkings", "fanduel", "betmgm", "caesars"]
 T0_LEAD_MIN, T0_WINDOW = 180, 20
