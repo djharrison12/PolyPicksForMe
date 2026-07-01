@@ -1,0 +1,40 @@
+name: crossmarket-logger
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"      # heartbeat; the script decides which games are in a snapshot window
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "run | --probe (dump one event) | --analyze (read results)"
+        default: "run"
+        type: choice
+        options: ["run", "--probe", "--analyze"]
+
+permissions:
+  contents: write               # REQUIRED so the run can commit the log back
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}   # SportsGameOdds key; no Kalshi key needed
+        run: |
+          ARG="${{ github.event.inputs.mode }}"
+          [ "$ARG" = "run" ] || [ -z "$ARG" ] && ARG=""   # scheduled runs + 'run' -> no flag
+          python crossmarket_logger.py $ARG
+
+      - name: Commit log back to repo
+        run: |
+          git config user.name  "crossmarket-bot"
+          git config user.email "actions@github.com"
+          git add crossmarket_log.jsonl 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "crossmarket snapshot $(date -u +%FT%TZ)"
+          git push || true
