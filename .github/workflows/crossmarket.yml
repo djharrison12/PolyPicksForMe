@@ -9,7 +9,7 @@ on:
         description: "run | --probe (dump one event) | --analyze (read results)"
         default: "run"
         type: choice
-        options: ["run", "--probe", "--analyze"]
+        options: ["run", "--probe", "--analyze", "--pmprobe"]
 
 permissions:
   contents: write               # REQUIRED so the run can commit the log back
