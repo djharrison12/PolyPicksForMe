@@ -1,32 +1,32 @@
 """
-crossmarket_logger.py  —  zero-capital measurement, NOT a bettor.  (SportsGameOdds v2)
+crossmarket_logger.py  —  zero-capital measurement, NOT a bettor.  (SportsGameOdds v2 + Polymarket)
 
-v1 answers "does the soft retail book's closing line drift toward the sharp book?"
-using only your SportsGameOdds key. Polymarket slots in later (fetch_pm), PHASE 2.
-It logs only. Never places a bet.
+v2: Polymarket is the reference column (free SGO tier has NO sharp books — all retail).
+The test is now: does the soft retail book's closing line drift toward Polymarket's
+earlier price (PM leads) — or does PM drift toward the book (PM lags)?
+Also logs SGO's own fairOdds consensus as a bonus reference.
 
-STATUS: auth + fetch are wired correctly to SportsGameOdds v2. The moneyline
-field-mapping is BEST-EFFORT because soccer is 3-way and the exact oddID tokens
-need to be confirmed against a real response. Run `--probe` first, paste the
-output, and the parser gets locked to the real shape.
+It logs only. It never places a bet.
 
 FROZEN RULES (set once, never tune after seeing results):
-  T0 snapshot ~3h pre-kick, close snapshot ~10m pre-kick, every game.
+  T0 snapshot ~3h pre-kick (20-min window), close snapshot 0-25m pre-kick.
   DEVIG = proportional. Freeze it.
 """
 import os, json, time, urllib.request, urllib.error
 from pathlib import Path
 
 # ---------------- CONFIG ----------------
-API_KEY   = os.environ.get("ODDS_API_KEY", "").strip()   # strip stray newline/space from the secret
+API_KEY   = os.environ.get("ODDS_API_KEY", "").strip()
 API_BASE  = "https://api.sportsgameodds.com/v2"
-LEAGUE_ID = "MLB"                     # in-season, ~15 games/day through Sept — best runway on the free tier
-SHARP_BOOKS = ["pinnacle", "circa", "betonlineag"]
-SOFT_BOOKS  = ["draftkings", "fanduel", "betmgm", "caesars"]
+GAMMA     = "https://gamma-api.polymarket.com"
+LEAGUE_ID = "MLB"
+SOFT_BOOKS  = ["draftkings", "fanduel", "betmgm", "caesars"]   # priority order
 T0_LEAD_MIN, T0_WINDOW = 180, 20
-CLOSE_LEAD_MIN         = 10
+CLOSE_LEAD_MIN         = 25          # widened: 15-min cron guarantees a catch now
 LOG = Path("crossmarket_log.jsonl")
 
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 
 # ---------------- de-vig core ----------------
 def american_to_prob(o):
@@ -34,41 +34,33 @@ def american_to_prob(o):
     return (-o) / ((-o) + 100) if o < 0 else 100 / (o + 100)
 
 def devig(probs):
-    """N-way proportional de-vig. Pass {side: raw_prob}, get {side: fair_prob}."""
     s = sum(probs.values())
     return {k: v / s for k, v in probs.items()} if s else {}
 
-
-# ---------------- fetch (SportsGameOdds v2) ----------------
-def api_get(path):
-    headers = {
-        "x-api-key": API_KEY,
-        # urllib's default UA ('Python-urllib/x') trips Cloudflare error 1010.
-        # A browser-like UA gets past the edge block.
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "application/json",
-    }
-    req = urllib.request.Request(API_BASE + path, headers=headers)
+# ---------------- HTTP ----------------
+def http_json(url, headers=None):
+    h = {"User-Agent": UA, "Accept": "application/json"}
+    if headers: h.update(headers)
+    req = urllib.request.Request(url, headers=h)
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.load(r)
     except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", "replace")[:800]
-        print(f"--- HTTP {e.code} from {path} ---")
-        print("SGO says:", body)          # <-- paste THIS line back to lock the fix
+        print(f"--- HTTP {e.code} from {url.split('?')[0]} ---")
+        print("body:", e.read().decode("utf-8", "replace")[:400])
         return None
     except Exception as e:
         print("request failed:", repr(e))
         return None
 
+def api_get(path):
+    return http_json(API_BASE + path, {"x-api-key": API_KEY})
+
 def fetch_events():
-    # finalized=false = upcoming; oddsAvailable=true = only games that have odds
     data = api_get(f"/events?leagueID={LEAGUE_ID}&finalized=false&oddsAvailable=true")
     return (data or {}).get("data", [])
 
-
-# ---------------- BEST-EFFORT parsing (probe confirms these paths) ----------------
+# ---------------- SGO parsing (locked against real MLB probe 2026-07-04) ----------------
 def event_start(ev):
     for path in (("status", "startsAt"), ("status", "scheduled"), ("scheduled",), ("startTime",)):
         cur = ev
@@ -80,44 +72,80 @@ def event_start(ev):
 
 def event_teams(ev):
     t = ev.get("teams", {})
-    def nm(side):
+    def nm(side, field="long"):
         s = t.get(side, {})
-        return (s.get("names", {}) or {}).get("long") or s.get("name") or side
+        return (s.get("names", {}) or {}).get(field) or s.get("name") or side
     return nm("home"), nm("away")
 
+def event_abbrs(ev):
+    t = ev.get("teams", {})
+    def ab(side):
+        s = t.get(side, {})
+        return ((s.get("names", {}) or {}).get("short") or "").lower()
+    return ab("home"), ab("away")
+
 def moneyline_probs(ev):
-    """Return {bookmaker: fair home-win prob} from the full-game moneyline (2- or 3-way)."""
-    # collect raw american odds per bookmaker per side, for moneyline full-game odds only
-    per_book = {}   # book -> {side: american}
+    """{bookmaker: fair home prob} from FULL-GAME moneyline only. Also returns sgo fair prob."""
+    per_book, fair = {}, {}
     for oddID, odd in (ev.get("odds") or {}).items():
         parts = oddID.split("-")
-        if "ml" not in parts:                      # moneyline only
-            continue
-        if not any(p in parts for p in ("game", "reg", "match", "full")):
+        if "ml" not in parts or "game" not in parts:
             continue
         side = next((p for p in parts if p in ("home", "away", "draw")), None)
         if not side:
             continue
+        if odd.get("fairOdds") not in (None, ""):
+            fair[side] = odd["fairOdds"]
         for bk, bo in (odd.get("byBookmaker") or {}).items():
             if not bo.get("available", True) or bo.get("odds") in (None, ""):
                 continue
             per_book.setdefault(bk, {})[side] = bo["odds"]
     out = {}
     for bk, sides in per_book.items():
-        if "home" not in sides or "away" not in sides:
-            continue
-        raw = {s: american_to_prob(o) for s, o in sides.items()}
-        out[bk] = round(devig(raw)["home"], 4)
-    return out
+        if "home" in sides and "away" in sides:
+            out[bk] = round(devig({s: american_to_prob(o) for s, o in sides.items()})["home"], 4)
+    sgo_fair = None
+    if "home" in fair and "away" in fair:
+        sgo_fair = round(devig({s: american_to_prob(o) for s, o in fair.items()})["home"], 4)
+    return out, sgo_fair
 
 def pick(books, priority):
     return next((k for k in priority if k in books), None)
 
+# ---------------- Polymarket via gamma ----------------
+def et_date(startsAt_ts):
+    """US-listed game date: UTC start minus 4h (EDT)."""
+    return time.strftime("%Y-%m-%d", time.gmtime(startsAt_ts - 4 * 3600))
 
-# ---------------- PHASE 2 stub ----------------
-def fetch_pm(ev):
-    return None   # paste your poly_consensus2.py CLOB-midpoint call here later
+def pm_lookup(ev, commence_ts):
+    """Return (pm_home_prob, matched_slug) or (None, None). Tries both team orders."""
+    home_ab, away_ab = event_abbrs(ev)
+    home_long, away_long = event_teams(ev)
+    if not home_ab or not away_ab:
+        return None, None
+    d = et_date(commence_ts)
+    for slug in (f"mlb-{away_ab}-{home_ab}-{d}", f"mlb-{home_ab}-{away_ab}-{d}"):
+        data = http_json(f"{GAMMA}/events?slug={slug}")
+        if not data:
+            continue
+        events = data if isinstance(data, list) else data.get("events") or []
+        for e in events:
+            for m in e.get("markets", []):
+                try:
+                    outcomes = json.loads(m.get("outcomes") or "[]")
+                    prices   = json.loads(m.get("outcomePrices") or "[]")
+                except Exception:
+                    continue
+                if len(outcomes) != 2 or len(prices) != 2:
+                    continue
+                for i, o in enumerate(outcomes):
+                    if o.strip().lower() == home_long.strip().lower():
+                        return round(float(prices[i]), 4), slug
+    return None, None
 
+def fetch_pm(ev, commence_ts):
+    p, _ = pm_lookup(ev, commence_ts)
+    return p
 
 # ---------------- snapshot logic ----------------
 def already_logged(gid, phase, rows):
@@ -131,13 +159,13 @@ def due_phase(commence_ts, now):
 
 def parse_ts(s):
     for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ"):
-        try: return time.mktime(time.strptime(s, fmt))
+        try: return time.mktime(time.strptime(s, fmt)) - time.timezone
         except (ValueError, TypeError): pass
     return None
 
 def run():
     if not API_KEY:
-        print("no ODDS_API_KEY in env — is the secret set and named exactly ODDS_API_KEY?"); return
+        print("no ODDS_API_KEY in env"); return
     rows = [json.loads(l) for l in LOG.read_text().splitlines()] if LOG.exists() else []
     now, events = time.time(), fetch_events()
     print(f"fetched {len(events)} upcoming events")
@@ -148,51 +176,50 @@ def run():
         if commence is None: continue
         phase = due_phase(commence, now)
         if not phase or already_logged(gid, phase, rows): continue
-        probs = moneyline_probs(ev)
-        sharp_k, soft_k = pick(probs, SHARP_BOOKS), pick(probs, SOFT_BOOKS)
+        probs, sgo_fair = moneyline_probs(ev)
+        soft_k = pick(probs, SOFT_BOOKS)
         home, away = event_teams(ev)
+        pm_prob, pm_slug = pm_lookup(ev, commence)
         row = {"ts": int(now), "game_id": gid, "phase": phase, "commence": event_start(ev),
                "home": home, "away": away,
-               "sharp_book": sharp_k, "sharp_prob": probs.get(sharp_k),
-               "soft_book": soft_k,   "soft_prob": probs.get(soft_k),
-               "pm_prob": fetch_pm(ev), "all_books": probs}
+               "soft_book": soft_k, "soft_prob": probs.get(soft_k),
+               "pm_prob": pm_prob, "pm_slug": pm_slug,
+               "sgo_fair_prob": sgo_fair,
+               "all_books": probs}
         with LOG.open("a") as f: f.write(json.dumps(row) + "\n")
         written += 1
-        print(f"  logged {phase}: {home} vs {away} sharp={sharp_k}={row['sharp_prob']} soft={soft_k}={row['soft_prob']}")
+        print(f"  logged {phase}: {away} @ {home}  soft={soft_k}={row['soft_prob']} pm={pm_prob} fair={sgo_fair}")
     print(f"wrote {written} rows")
 
-
-# ---------------- probe: dump one real event so we can lock the parser ----------------
-def list_leagues():
-    data = api_get("/leagues")
-    leagues = (data or {}).get("data", [])
-    print(f"--- {len(leagues)} valid league IDs (scan for the one you want) ---")
-    for lg in leagues:
-        lid   = lg.get("leagueID") or lg.get("id")
-        sport = lg.get("sportID", "")
-        name  = lg.get("name") or (lg.get("names", {}) or {}).get("long", "")
-        print(f"  {lid:24} {sport:12} {name}")
-
+# ---------------- probes ----------------
 def probe():
     if not API_KEY: print("no ODDS_API_KEY in env"); return
-    print(f"key loaded: length {len(API_KEY)}, starts '{API_KEY[:4]}…'   base {API_BASE}")
+    print(f"key loaded: length {len(API_KEY)}   base {API_BASE}")
     events = fetch_events()
     print(f"got {len(events)} events")
-    if not events:
-        print("no events for this LEAGUE_ID — here are the valid IDs:")
-        list_leagues()
-        return
+    if not events: return
     ev = events[0]
-    print("top-level keys:", list(ev.keys()))
-    print("teams block:", json.dumps(ev.get("teams"), indent=2)[:600])
-    print("start guesses:", event_start(ev))
-    odds = ev.get("odds") or {}
-    print(f"odds count: {len(odds)}")
-    ml = [k for k in odds if "ml" in k.split("-")][:6]
-    print("sample moneyline-ish oddIDs:", ml)
-    if ml:
-        print("one moneyline odd:", json.dumps(odds[ml[0]], indent=2)[:600])
+    probs, fair = moneyline_probs(ev)
+    print("teams:", event_teams(ev), "| abbrs:", event_abbrs(ev), "| start:", event_start(ev))
+    print("book probs:", probs, "| sgo fair:", fair)
 
+def pmprobe():
+    """Verify PM slug matching on the next few games. Paste this output back."""
+    events = fetch_events()
+    now = time.time()
+    upcoming = []
+    for ev in events:
+        c = parse_ts(event_start(ev))
+        if c and 0 < c - now < 24 * 3600:
+            upcoming.append((c, ev))
+    upcoming.sort()
+    print(f"checking PM match for next {min(4, len(upcoming))} games:")
+    for c, ev in upcoming[:4]:
+        home, away = event_teams(ev)
+        ha, aa = event_abbrs(ev)
+        p, slug = pm_lookup(ev, c)
+        print(f"  {away} @ {home}  abbrs=({aa},{ha})  et_date={et_date(c)}")
+        print(f"    -> pm_prob={p}  slug={slug}")
 
 # ---------------- analysis ----------------
 def analyze():
@@ -200,17 +227,20 @@ def analyze():
     by = {}
     for r in rows: by.setdefault(r["game_id"], {})[r["phase"]] = r
     pairs = [g for g in by.values() if "t0" in g and "close" in g
-             and g["t0"].get("sharp_prob") and g["t0"].get("soft_prob") and g["close"].get("soft_prob")]
-    print(f"paired games with sharp+soft: {len(pairs)}  (need ~50+, forward, unfitted)")
+             and g["t0"].get("pm_prob") is not None
+             and g["t0"].get("soft_prob") and g["close"].get("soft_prob")]
+    print(f"paired games with PM+soft: {len(pairs)}  (need ~50+, forward, unfitted)")
     if pairs:
         toward = sum(1 for g in pairs
-                     if (g["t0"]["sharp_prob"]-g["t0"]["soft_prob"])*(g["close"]["soft_prob"]-g["t0"]["soft_prob"]) > 0)
-        print(f"  soft closed toward sharp in {toward}/{len(pairs)} = {100*toward/len(pairs):.0f}% (>50% = soft lags sharp)")
+                     if (g["t0"]["pm_prob"] - g["t0"]["soft_prob"])
+                      * (g["close"]["soft_prob"] - g["t0"]["soft_prob"]) > 0)
+        print(f"  soft closed toward PM's t0 read in {toward}/{len(pairs)} = "
+              f"{100*toward/len(pairs):.0f}%  (>50% = PM leads the soft book)")
     return pairs
-
 
 if __name__ == "__main__":
     import sys
     if   "--probe"   in sys.argv: probe()
+    elif "--pmprobe" in sys.argv: pmprobe()
     elif "--analyze" in sys.argv: analyze()
     else: run()
