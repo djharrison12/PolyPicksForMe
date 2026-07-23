@@ -21,8 +21,8 @@ API_BASE  = "https://api.sportsgameodds.com/v2"
 GAMMA     = "https://gamma-api.polymarket.com"
 LEAGUE_ID = "MLB"
 SOFT_BOOKS  = ["draftkings", "fanduel", "betmgm", "caesars"]   # priority order
-T0_LEAD_MIN, T0_WINDOW = 180, 20
-CLOSE_LEAD_MIN         = 25          # widened: 15-min cron guarantees a catch now
+T0_LEAD_MIN, T0_WINDOW = 180, 34
+CLOSE_LEAD_MIN         = 35          # windows sized for a 30-min cron: nothing can slip between ticks
 LOG = Path("crossmarket_log.jsonl")
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
