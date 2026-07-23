@@ -2,17 +2,20 @@ name: crossmarket-logger
 
 on:
   schedule:
-    - cron: "*/15 * * * *"      # heartbeat; the script decides which games are in a snapshot window
+    # every 30 min, only during MLB game hours (~16:00-05:00 UTC = noon-1am ET)
+    # ~26 SGO calls/day ≈ 780/month — fits a free-tier quota with headroom for probes
+    - cron: "*/30 16-23 * * *"
+    - cron: "*/30 0-4 * * *"
   workflow_dispatch:
     inputs:
       mode:
-        description: "run | --probe (dump one event) | --analyze (read results)"
+        description: "run | --probe | --pmprobe | --analyze"
         default: "run"
         type: choice
-        options: ["run", "--probe", "--analyze", "--pmprobe"]
+        options: ["run", "--probe", "--pmprobe", "--analyze"]
 
 permissions:
-  contents: write               # REQUIRED so the run can commit the log back
+  contents: write
 
 jobs:
   snapshot:
@@ -25,16 +28,17 @@ jobs:
 
       - name: Run
         env:
-          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}   # SportsGameOdds key; no Kalshi key needed
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
         run: |
           ARG="${{ github.event.inputs.mode }}"
-          [ "$ARG" = "run" ] || [ -z "$ARG" ] && ARG=""   # scheduled runs + 'run' -> no flag
+          [ "$ARG" = "run" ] || [ -z "$ARG" ] && ARG=""
           python crossmarket_logger.py $ARG
 
       - name: Commit log back to repo
         run: |
           git config user.name  "crossmarket-bot"
           git config user.email "actions@github.com"
+          git pull --rebase || true
           git add crossmarket_log.jsonl 2>/dev/null || true
           git diff --staged --quiet || git commit -m "crossmarket snapshot $(date -u +%FT%TZ)"
           git push || true
